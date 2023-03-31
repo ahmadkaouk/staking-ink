@@ -1,44 +1,41 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(min_specialization)]
 
-#[ink::contract]
-mod psp22 {
+/// A PSP-22 compliant token.
+#[openbrush::contract]
+mod my_psp22 {
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    use openbrush::contracts::psp22::*;
+    use openbrush::traits::Storage;
     #[ink(storage)]
-    pub struct Psp22 {
-        /// Stores a single `bool` value on the storage.
-        value: bool,
+    #[derive(Default, Storage)]
+    pub struct StakingToken {
+        #[storage_field]
+        psp22: psp22::Data,
     }
 
-    impl Psp22 {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
+    impl PSP22 for StakingToken {}
+
+    impl StakingToken {
+        /// Creates a new `StakingToken` instance.
         #[ink(constructor)]
-        pub fn new(init_value: bool) -> Self {
-            Self { value: init_value }
-        }
+        pub fn new(staking_contract: AccountId) -> Self {
+            let mut instance = Self::default();
 
-        /// Constructor that initializes the `bool` value to `false`.
-        ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
-        }
+            // 1 billion with 18 decimals
+            let initial_supply: Balance = 1_000_000_000 * 10u128.pow(18);
+            // 70% of initial supply
+            let staking_tokens: Balance = initial_supply * 70 / 100;
 
-        /// A message that can be called on instantiated contracts.
-        /// This one flips the value of the stored `bool` from `true`
-        /// to `false` and vice versa.
-        #[ink(message)]
-        pub fn flip(&mut self) {
-            self.value = !self.value;
-        }
+            instance
+                ._mint_to(instance.env().caller(), initial_supply - staking_tokens)
+                .expect("should mint");
 
-        /// Simply returns the current value of our `bool`.
-        #[ink(message)]
-        pub fn get(&self) -> bool {
-            self.value
+            instance
+                ._mint_to(staking_contract, staking_tokens)
+                .expect("should mint staking tokens");
+
+            instance
         }
     }
 
@@ -46,27 +43,7 @@ mod psp22 {
     /// module and test functions are marked with a `#[test]` attribute.
     /// The below code is technically just normal Rust code.
     #[cfg(test)]
-    mod tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
-        use super::*;
-
-        /// We test if the default constructor does its job.
-        #[ink::test]
-        fn default_works() {
-            let psp22 = Psp22::default();
-            assert_eq!(psp22.get(), false);
-        }
-
-        /// We test a simple use case of our contract.
-        #[ink::test]
-        fn it_works() {
-            let mut psp22 = Psp22::new(false);
-            assert_eq!(psp22.get(), false);
-            psp22.flip();
-            assert_eq!(psp22.get(), true);
-        }
-    }
-
+    mod tests {}
 
     /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
     ///
@@ -74,69 +51,5 @@ mod psp22 {
     /// - Compile the tests with the `e2e-tests` feature flag enabled (`--features e2e-tests`)
     /// - Are running a Substrate node which contains `pallet-contracts` in the background
     #[cfg(all(test, feature = "e2e-tests"))]
-    mod e2e_tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
-        use super::*;
-
-        /// A helper function used for calling contract messages.
-        use ink_e2e::build_message;
-
-        /// The End-to-End test `Result` type.
-        type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-        /// We test that we can upload and instantiate the contract using its default constructor.
-        #[ink_e2e::test]
-        async fn default_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = Psp22Ref::default();
-
-            // When
-            let contract_account_id = client
-                .instantiate("psp22", &ink_e2e::alice(), constructor, 0, None)
-                .await
-                .expect("instantiate failed")
-                .account_id;
-
-            // Then
-            let get = build_message::<Psp22Ref>(contract_account_id.clone())
-                .call(|psp22| psp22.get());
-            let get_result = client.call_dry_run(&ink_e2e::alice(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
-
-            Ok(())
-        }
-
-        /// We test that we can read and write a value from the on-chain contract contract.
-        #[ink_e2e::test]
-        async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = Psp22Ref::new(false);
-            let contract_account_id = client
-                .instantiate("psp22", &ink_e2e::bob(), constructor, 0, None)
-                .await
-                .expect("instantiate failed")
-                .account_id;
-
-            let get = build_message::<Psp22Ref>(contract_account_id.clone())
-                .call(|psp22| psp22.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
-
-            // When
-            let flip = build_message::<Psp22Ref>(contract_account_id.clone())
-                .call(|psp22| psp22.flip());
-            let _flip_result = client
-                .call(&ink_e2e::bob(), flip, 0, None)
-                .await
-                .expect("flip failed");
-
-            // Then
-            let get = build_message::<Psp22Ref>(contract_account_id.clone())
-                .call(|psp22| psp22.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), true));
-
-            Ok(())
-        }
-    }
+    mod e2e_tests {}
 }
