@@ -5,51 +5,50 @@
 #[openbrush::contract]
 mod my_psp22 {
 
-    use openbrush::contracts::psp22::*;
-    use openbrush::traits::Storage;
+    use openbrush::{
+        contracts::psp22::extensions::metadata::*,
+        traits::{Storage, String},
+    };
+
     #[ink(storage)]
     #[derive(Default, Storage)]
     pub struct StakingToken {
         #[storage_field]
         psp22: psp22::Data,
+        #[storage_field]
+        metadata: metadata::Data,
     }
 
     impl PSP22 for StakingToken {}
 
+    impl PSP22Metadata for StakingToken {}
+
     impl StakingToken {
-        /// Creates a new `StakingToken` instance.
+        /// Creates a new `StakingToken` instance with the given `name` and `symbol`
         #[ink(constructor)]
-        pub fn new(staking_contract: AccountId) -> Self {
+        pub fn new(
+            name: Option<String>,
+            symbol: Option<String>,
+            staking_contract: AccountId,
+        ) -> Self {
             let mut instance = Self::default();
 
+            instance.metadata.name = name;
+            instance.metadata.symbol = symbol;
+            instance.metadata.decimals = 18;
+
             // 1 billion with 18 decimals
-            let initial_supply: Balance = 1_000_000_000 * 10u128.pow(18);
+            let initial_supply = 1_000_000_000 * 10u128.pow(18);
             // 70% of initial supply
-            let staking_tokens: Balance = initial_supply * 70 / 100;
+            let staking_tokens = initial_supply * 70 / 100;
 
-            instance
+            assert!(instance
                 ._mint_to(instance.env().caller(), initial_supply - staking_tokens)
-                .expect("should mint");
+                .is_ok());
 
-            instance
-                ._mint_to(staking_contract, staking_tokens)
-                .expect("should mint staking tokens");
+            assert!(instance._mint_to(staking_contract, staking_tokens).is_ok());
 
             instance
         }
     }
-
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
-    #[cfg(test)]
-    mod tests {}
-
-    /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
-    ///
-    /// When running these you need to make sure that you:
-    /// - Compile the tests with the `e2e-tests` feature flag enabled (`--features e2e-tests`)
-    /// - Are running a Substrate node which contains `pallet-contracts` in the background
-    #[cfg(all(test, feature = "e2e-tests"))]
-    mod e2e_tests {}
 }
