@@ -51,4 +51,39 @@ mod my_psp22 {
             instance
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[ink::test]
+        fn new_works() {
+            let name = Some(String::from("Staking Token"));
+            let symbol = Some(String::from("STK"));
+            let staking_contract = AccountId::from([0x2; 32]);
+            let instance = StakingToken::new(name.clone(), symbol.clone(), staking_contract);
+
+            assert_eq!(instance.token_name(), name);
+            assert_eq!(instance.token_symbol(), symbol);
+            assert_eq!(instance.token_decimals(), 18);
+        }
+
+        #[ink::test]
+        fn mint_works() {
+            let name = Some(String::from("Staking Token"));
+            let symbol = Some(String::from("STK"));
+            let staking_contract = AccountId::from([0x2; 32]);
+            let instance = StakingToken::new(name.clone(), symbol.clone(), staking_contract);
+
+            let account = AccountId::from([0x1; 32]);
+            assert_eq!(instance.total_supply(), 1_000_000_000 * 10u128.pow(18));
+            assert_eq!(instance.balance_of(account), 300_000_000 * 10u128.pow(18));
+            assert_eq!(
+                instance.balance_of(staking_contract),
+                700_000_000 * 10u128.pow(18)
+            );
+        }
+    }
 }
+
+mod e2e {}
