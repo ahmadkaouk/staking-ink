@@ -1,0 +1,24 @@
+[package]
+name    = "reputation_token"
+version = "0.1.0"
+authors = ["[Ahmad Kaouk] <[ahmadkaouk.93@gmail.com]>"]
+edition = "2021"
+
+[dependencies]
+ink        = { version = "~4.0.0", default-features = false }
+openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.0.0", default-features = false, features = [ "psp37", ] }
+scale      = { package = "parity-scale-codec", version = "3", default-features = false, features = [ "derive", ] }
+scale-info = { version = "2.3", default-features = false, features = [ "derive", ], optional = true }
+
+[dev-dependencies]
+ink_e2e = "4.0.1"
+
+[lib]
+path       = "lib.rs"
+crate-type = ["cdylib"]
+
+[features]
+default           = ["std"]
+std               = ["ink/std", "scale/std", "scale-info/std", "openbrush/std"]
+ink-as-dependency = []
+e2e-tests = []
