@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(min_specialization)]
 
-#[ink::contract]
+#[openbrush::contract]
 mod reputation_token {
     use openbrush::{
         contracts::psp37::*,
