@@ -26,3 +26,10 @@ To run the unit tests, execute:
 ```bash
 cargo +nightly test
 ```
+To run integration test you need to start the node with contract-pallet. check [here](https://github.com/paritytech/substrate-contracts-node) for more details.
+
+For example, to run the integration tests with a local node binary, run:
+
+```bash
+CONTRACTS_NODE=<path_to_binary> cargo +nightly test --features e2e-tests
+```

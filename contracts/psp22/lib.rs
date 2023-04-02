@@ -184,8 +184,8 @@ mod my_staking_token {
                 INITIAL_SUPPLY
             );
 
-            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
             // Check Balance of Contract Owner (Alice)
+            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
             let alice_balance = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.balance_of(alice_account));
             assert_eq!(
