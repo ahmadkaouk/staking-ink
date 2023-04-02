@@ -1,2 +1,12 @@
-[workspace]
-members = ["contracts/psp22"]
+[package]
+name    = "staking_dapp"
+version = "0.1.0"
+authors = ["Ahmad Kaouk <ahmadkaouk.93@gmail.com"]
+edition = "2021"
+
+[dependencies]
+
+
+[lib]
+name = "staking_dapp"
+path = "lib.rs"
