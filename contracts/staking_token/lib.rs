@@ -19,10 +19,10 @@ mod token {
     /// The percentage of tokens sent to the staking contract: 70%.
     const STAKING_ALLOCATION: u128 = 70;
 
-    /// The main storage structure of the `StakingTokenContract` contract.
+    /// The main storage structure of the `MyStakingToken` contract.
     #[ink(storage)]
     #[derive(Default, Storage)]
-    pub struct StakingTokenContract {
+    pub struct MyStakingToken {
         #[storage_field]
         psp22: psp22::Data,
         #[storage_field]
@@ -30,14 +30,14 @@ mod token {
     }
 
     /// Implementation of the PSP22 standard for this contract.
-    impl PSP22 for StakingTokenContract {}
+    impl PSP22 for MyStakingToken {}
 
     /// Implementation of the PSP22Metadata extension for this contract.
-    impl PSP22Metadata for StakingTokenContract {}
+    impl PSP22Metadata for MyStakingToken {}
 
-    /// Implementation of the `StakingTokenContract` contract.
-    impl StakingTokenContract {
-        /// Creates a new `StakingTokenContract` instance with the given `name` and `symbol`.
+    /// Implementation of the `MyStakingToken` contract.
+    impl MyStakingToken {
+        /// Creates a new `MyStakingToken` instance with the given `name` and `symbol`.
         ///
         /// The `staking_contract_address` parameter is the address where 70% of the
         /// initial token supply will be sent.
@@ -84,21 +84,21 @@ mod token {
             let symbol = Some(OBString::from("MST"));
             let staking_contract_address = AccountId::from([0x2; 32]);
             let instance =
-                StakingTokenContract::new(name.clone(), symbol.clone(), staking_contract_address);
+                MyStakingToken::new(name.clone(), symbol.clone(), staking_contract_address);
 
             assert_eq!(instance.token_name(), name);
             assert_eq!(instance.token_symbol(), symbol);
             assert_eq!(instance.token_decimals(), 18);
         }
 
-        /// Test that the `StakingTokenContract` constructor distributes tokens correctly,
+        /// Test that the `MyStakingToken` constructor distributes tokens correctly,
         /// assigning 70% to the staking contract and 30% to the contract creator.
         #[ink::test]
         fn constructor_distributes_tokens_correctly() {
             let name = Some(OBString::from("My Staking Token"));
             let symbol = Some(OBString::from("MST"));
             let staking_contract_addr = accounts().bob;
-            let instance = StakingTokenContract::new(name.clone(), symbol.clone(), staking_contract_addr);
+            let instance = MyStakingToken::new(name.clone(), symbol.clone(), staking_contract_addr);
             let owner = accounts().alice;
             let staking_tokens = INITIAL_SUPPLY * STAKING_ALLOCATION / 100;
             let creator_tokens = INITIAL_SUPPLY - staking_tokens;
@@ -127,7 +127,7 @@ mod token {
         async fn instantiation_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             // Given
             let staking_contract_addr = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
-            let constructor = StakingTokenContractRef::new(
+            let constructor = MyStakingTokenRef::new(
                 Some(OBString::from("My Staking Token")),
                 Some(OBString::from("MST")),
                 staking_contract_addr,
@@ -141,7 +141,7 @@ mod token {
                 .account_id;
 
             // Check Token Name
-            let token_name = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let token_name = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.token_name());
             assert_eq!(
                 client
@@ -152,7 +152,7 @@ mod token {
             );
 
             // Check Token Symbol
-            let token_symbol = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let token_symbol = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.token_symbol());
             assert_eq!(
                 client
@@ -163,7 +163,7 @@ mod token {
             );
 
             // Check Token Decimals
-            let token_decimals = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let token_decimals = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.token_decimals());
             assert_eq!(
                 client
@@ -174,7 +174,7 @@ mod token {
             );
 
             // Check Total Supply
-            let total_supply = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let total_supply = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.total_supply());
             assert_eq!(
                 client
@@ -186,7 +186,7 @@ mod token {
 
             // Check Balance of Contract Owner (Alice)
             let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
-            let alice_balance = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let alice_balance = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.balance_of(alice_account));
             assert_eq!(
                 client
@@ -197,7 +197,7 @@ mod token {
             );
 
             // Check Balance of Staking Contract (Bob)
-            let bob_balance = build_message::<StakingTokenContractRef>(contract_account_id.clone())
+            let bob_balance = build_message::<MyStakingTokenRef>(contract_account_id.clone())
                 .call(|token| token.balance_of(staking_contract_addr));
             assert_eq!(
                 client
