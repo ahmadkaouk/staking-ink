@@ -1,4 +1,4 @@
-use openbrush::traits::{AccountId, Balance};
+use openbrush::{traits::{AccountId, Balance}, contracts::traits::psp22::PSP22Error};
 
 #[cfg(feature = "std")]
 #[openbrush::wrapper]
@@ -54,4 +54,12 @@ pub enum StakingError {
     InsufficientBalance,
     /// The caller has no staking rewards.
     NoStakingRewards,
+    /// PSP22 error
+    PSP22Error(PSP22Error),
+}
+
+impl From<PSP22Error> for StakingError {
+    fn from(error: PSP22Error) -> Self {
+        Self::PSP22Error(error)
+    }
 }

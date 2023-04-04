@@ -5,15 +5,20 @@
 pub mod staking {
     use ink::ToAccountId;
     use openbrush::traits::{Storage, String};
-    use staking_dapp::impls::*;
+    use staking_dapp::{
+        impls::staking::{data, staking::*},
+        traits::staking::*,
+    };
     use staking_token::token::StakingTokenContractRef;
 
     #[ink(storage)]
     #[derive(Default, Storage)]
     pub struct StakingContract {
         #[storage_field]
-        staking: staking::Data,
+        staking: data::Data,
     }
+
+    impl Staking for StakingContract {}
 
     impl StakingContract {
         #[ink(constructor)]
@@ -39,9 +44,5 @@ pub mod staking {
 
             instance
         }
-
-        /// Stakes the specified amount of tokens.
-        #[ink(message)]
-        pub fn stake(&mut self, amount: Balance) {}
     }
 }
