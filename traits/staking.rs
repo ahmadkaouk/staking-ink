@@ -1,47 +1,57 @@
-use openbrush::traits::{AccountId, Balance, Timestamp};
+use openbrush::traits::{AccountId, Balance};
 
 #[cfg(feature = "std")]
-use ink::storage::traits::StorageLayout;
-
-#[derive(Debug, Clone, scale::Encode, scale::Decode)]
-#[cfg_attr(feature = "std", derive(StorageLayout, scale_info::TypeInfo))]
-pub struct StakeInfo {
-    pub staker: AccountId,
-    pub amount: Balance,
-    pub start_time: Timestamp,
-}
-
-impl Default for StakeInfo {
-    fn default() -> Self {
-        Self {
-            staker: [0u8; 32].into(),
-            amount: Default::default(),
-            start_time: Default::default(),
-        }
-    }
-}
-
 #[openbrush::wrapper]
 pub type StakingRef = dyn Staking;
 
 #[openbrush::trait_definition]
 pub trait Staking {
-    /// Stakes the specified amount of tokens.
+    /// Stakes the specified amount of tokens. The tokens are transferred from the caller's account.
+    /// The caller must have approved the contract to transfer the specified amount of tokens.
+    ///
+    /// `amount` - The amount of tokens to stake.
+    ///
+    /// Returns `StakingError::InsufficientAllowance` if the caller has not approved the contract
+    /// to transfer the specified amount of tokens.
+    /// Returns `StakingError::InsufficientBalance` if the caller does not have enough tokens to
+    /// stake.
     #[ink(message)]
-    fn stake(&mut self, amount: Balance);
+    fn stake(&mut self, amount: Balance) -> Result<(), StakingError>;
 
+    /// Unstakes the specified amount of tokens. The tokens are transferred to the caller's account.
+    ///
+    /// `amount` - The amount of tokens to unstake.
+    ///
+    /// Returns `StakingError::InsufficientBalance` if the caller does not have enough tokens to
+    /// unstake.
     #[ink(message)]
-    fn unstake(&mut self, amount: Balance);
+    fn unstake(&mut self, amount: Balance) -> Result<(), StakingError>;
 
-    #[ink(message)]
-    fn withdraw(&mut self);
+    /// Claims the staking rewards for the caller. The rewards are transferred to the caller's
+    /// account.
+    ///
+    /// Returns `StakingError::NoStakingRewards` if the caller has no staking rewards.
+    fn claim_rewards(&mut self) -> Result<(), StakingError>;
 
+    /// Returns the amount of tokens staked by the specified user. If the user has not staked any
+    /// tokens, this method returns `0`.
+    ///
+    /// `staker` - The address of the user.
+    fn staked_amount(&self, staker: AccountId) -> Balance;
+
+    /// Returns the total amount of tokens staked.
     #[ink(message)]
-    fn get_stake_info(&self, staker: AccountId) -> StakeInfo;
+    fn total_staked(&self) -> Balance;
 }
 
-/// Enum for the error codes that can be returned by the `Stake` trait.
+// Define an enum for the error codes that can be returned by the Staking trait.
 #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
 #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
 pub enum StakingError {
+    /// The caller has not approved the contract to transfer the specified amount of tokens.
+    InsufficientAllowance,
+    /// The caller does not have enough tokens to stake.
+    InsufficientBalance,
+    /// The caller has no staking rewards.
+    NoStakingRewards,
 }

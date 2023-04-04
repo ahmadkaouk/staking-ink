@@ -35,7 +35,7 @@ pub mod staking {
             .instantiate();
 
             instance.staking.staking_token = staking_token.to_account_id();
-            // instance.staking.start_time = instance.env().block_timestamp();
+            instance.staking.start_time = instance.env().block_timestamp();
 
             instance
         }
