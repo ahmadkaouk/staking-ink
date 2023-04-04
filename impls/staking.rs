@@ -1,4 +1,3 @@
-use crate::traits::staking::*;
 use openbrush::{
     storage::Mapping,
     traits::{AccountId, Balance, Timestamp},
@@ -17,6 +16,8 @@ pub struct Data {
     pub stakers: Mapping<AccountId, Balance>,
     /// The total amount of tokens staked by each user.
     pub staking_rewards: Mapping<AccountId, Balance>,
+    pub start_time: Timestamp,
+    pub epoch_duration: Timestamp,
 }
 
 impl Default for Data {
@@ -26,8 +27,8 @@ impl Default for Data {
             total_staked: Default::default(),
             stakers: Default::default(),
             staking_rewards: Default::default(),
-            // start_time: Default::default(),
-            // epoch_duration: Default::default(),
+            start_time: Default::default(),
+            epoch_duration: Default::default(),
         }
     }
 }

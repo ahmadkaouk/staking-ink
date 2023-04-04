@@ -8,7 +8,7 @@
 /// staking contract address, while the remaining 30% is assigned to the contract
 /// creator.
 #[openbrush::contract]
-mod token {
+pub mod token {
     use openbrush::{
         contracts::psp22::extensions::metadata::*,
         traits::{Storage, String as OBString},

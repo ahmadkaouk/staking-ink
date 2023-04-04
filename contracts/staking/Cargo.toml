@@ -1,27 +1,38 @@
 [package]
-name = "staking"
-version = "0.1.0"
-authors = ["[your_name] <[your_email]>"]
-edition = "2021"
+name        = "staking_contract"
+description = "A contract for staking a PSP-22 token"
+version     = "0.1.0"
+authors     = ["[Ahmad Kaouk] <[ahmadkaouk.93@gmail.com]>"]
+edition     = "2021"
 
 [dependencies]
-ink = { version = "4.0.1", default-features = false }
+ink        = { version = "4.1.0", default-features = false }
+openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.1.0", default-features = false }
+scale      = { package = "parity-scale-codec", version = "3", default-features = false, features = [ "derive", ] }
+scale-info = { version = "2.3", default-features = false, features = [ "derive", ], optional = true }
 
-scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
-scale-info = { version = "2.3", default-features = false, features = ["derive"], optional = true }
+staking_dapp  = { path = "../..", default-features = false }
+staking_token = { path = "../staking_token", default-features = false, features = [ "ink-as-dependency", ] }
 
 [dev-dependencies]
 ink_e2e = "4.0.1"
 
 [lib]
-path = "lib.rs"
+path       = "lib.rs"
+crate-type = ["cdylib"]
 
 [features]
-default = ["std"]
-std = [
-    "ink/std",
-    "scale/std",
-    "scale-info/std",
-]
+default           = ["std"]
+std               = [
+                "ink/std",
+                "scale/std",
+                "scale-info/std",
+                "staking_token/std",
+                "staking_dapp/std",
+                "openbrush/std"
+            ]
 ink-as-dependency = []
 e2e-tests = []
+
+[profile.dev]
+codegen-units = 16

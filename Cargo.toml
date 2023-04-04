@@ -5,10 +5,10 @@ authors = ["Ahmad Kaouk <ahmadkaouk.93@gmail.com"]
 edition = "2021"
 
 [dependencies]
-ink        = { version = "~4.0.0", default-features = false}
+ink        = { version = "4.1.0", default-features = false}
 scale      = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
 scale-info = { version = "2.3", default-features = false, features = ["derive"], optional = true }
-openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.0.0", default-features = false }
+openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.1.0", default-features = false }
 
 
 [lib]
