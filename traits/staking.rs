@@ -41,5 +41,7 @@ pub trait Staking {
 }
 
 /// Enum for the error codes that can be returned by the `Stake` trait.
+#[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
+#[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
 pub enum StakingError {
 }
