@@ -53,6 +53,7 @@ pub mod staking {
         }
 
         fn update_reward(&mut self, staker: AccountId) {
+            self.update_reputation(staker);
             self.update_reward_rate();
             self.staking.reward_per_token_stored = self.reward_per_token();
             self.staking.last_update_time = self.last_time_reward_applicable();
@@ -91,7 +92,7 @@ pub mod staking {
                 / REPUTATION_DURATION;
 
             self.reputation_last_update.insert(&staker, &now);
-            ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
+            let _ =ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
         }
     }
 
