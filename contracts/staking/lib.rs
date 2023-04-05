@@ -4,19 +4,16 @@
 #[openbrush::contract]
 pub mod staking {
     use core::ops::Mul;
-    use ink::ToAccountId;
-    use openbrush::traits::{DefaultEnv, Storage, String};
+    use openbrush::traits::{DefaultEnv, Storage};
     use staking_dapp::{
         impls::staking::{data, staking::*},
         traits::staking::*,
     };
-    use staking_token::token::StakingTokenContractRef;
 
     const SECONDS_PER_YEAR: u64 = 31_536_000;
     const INITIAL_REWARD_RATE: u128 = 50;
     const STAKING_ALLOCATION: u128 = 70;
-    const INITIAL_SUPPLY: u128 =
-        100_000_000_000_000_000_000_000_000_000u128 * STAKING_ALLOCATION / 100;
+    const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
 
     #[ink(storage)]
     #[derive(Default, Storage)]
@@ -33,6 +30,8 @@ pub mod staking {
                 self.staking.period_start + years_elapsed * SECONDS_PER_YEAR;
             self.staking.reward_rate = (INITIAL_REWARD_RATE >> years_elapsed) as u128
                 * INITIAL_SUPPLY
+                * STAKING_ALLOCATION
+                / 100
                 / SECONDS_PER_YEAR as u128;
         }
 
@@ -41,8 +40,7 @@ pub mod staking {
                 self.staking.reward_per_token_stored
             } else {
                 let delta_time = self.last_time_reward_applicable() - self.staking.last_update_time;
-                let reward =
-                    delta_time as u128 * self.staking.reward_rate * 1_000_000_000_000_000_000u128;
+                let reward = delta_time as u128 * self.staking.reward_rate * 10u128.pow(18);
                 self.staking.reward_per_token_stored + (reward / self.staking.total_supply)
             }
         }
@@ -65,7 +63,7 @@ pub mod staking {
                         .user_reward_per_token_paid
                         .get(&staker)
                         .unwrap_or(0),
-            ) / 1_000_000_000_000_000_000u128
+            ) / 10u128.pow(18)
                 + self.staking.rewards.get(&staker).unwrap_or(0)
         }
 
@@ -83,26 +81,376 @@ pub mod staking {
 
     impl StakingContract {
         #[ink(constructor)]
-        pub fn new(staking_token_hash: Hash) -> Self {
+        pub fn new(staking_token: AccountId) -> Self {
             let mut instance = Self::default();
 
-            // Get current contract address
-            let contract_address = instance.env().account_id();
-
-            // instantiate the staking token contract
-            let staking_token = StakingTokenContractRef::new(
-                Some(String::from("Staking Token")),
-                Some(String::from("STK")),
-                contract_address,
-            )
-            .endowment(0)
-            .code_hash(staking_token_hash)
-            .salt_bytes(&[0xDE, 0xAD, 0xBE, 0xEF])
-            .instantiate();
-
-            instance.staking.staking_token = staking_token.to_account_id();
+            instance.staking.staking_token = staking_token;
             instance.staking.period_start = instance.env().block_timestamp();
             instance
+        }
+    }
+
+    #[cfg(all(test, feature = "e2e-tests"))]
+    mod e2e_tests {
+
+        use super::*;
+        /// A helper function used for calling contract messages.
+        use ink_e2e::build_message;
+        use openbrush::contracts::psp22::{
+            extensions::metadata::psp22metadata_external::PSP22Metadata, psp22_external::PSP22,
+        };
+        use staking_dapp::traits::staking::staking_external::Staking;
+        use staking_token::token::StakingTokenContractRef;
+
+        /// The End-to-End test `Result` type.
+        type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+        /// We test that we can upload and instantiate the contract using its constructor.
+        #[ink_e2e::test(additional_contracts = "../staking_token/Cargo.toml")]
+        async fn instantiation_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+            // Instantiate the staking token contract
+            let staking_token = client
+                .instantiate(
+                    "staking_token",
+                    &ink_e2e::alice(),
+                    StakingTokenContractRef::new(
+                        Some(openbrush::traits::String::from("My Staking Token")),
+                        Some(openbrush::traits::String::from("MST")),
+                        18,
+                        INITIAL_SUPPLY,
+                    ),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            let staking_contract = client
+                .instantiate(
+                    "staking_contract",
+                    &ink_e2e::alice(),
+                    StakingContractRef::new(staking_token),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Check total staked amount at the beginning is 0
+            let token_name = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.total_supply());
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &token_name, 0, None)
+                    .await
+                    .return_value(),
+                0
+            );
+
+            // Check staked amount of the user at the beginning is 0
+            let bob_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
+            let bob_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.balance_of(bob_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &bob_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                0
+            );
+
+            Ok(())
+        }
+
+        // test that we can stake tokens
+        #[ink_e2e::test]
+        async fn stake_works(mut client: Client<C, E>) -> E2EResult<()> {
+            // Instantiate the staking token contract
+            let staking_token = client
+                .instantiate(
+                    "staking_token",
+                    &ink_e2e::alice(),
+                    StakingTokenContractRef::new(
+                        Some(openbrush::traits::String::from("My Staking Token")),
+                        Some(openbrush::traits::String::from("MST")),
+                        18,
+                        INITIAL_SUPPLY,
+                    ),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Instantiate the staking contract
+            let staking_contract = client
+                .instantiate(
+                    "staking_contract",
+                    &ink_e2e::alice(),
+                    StakingContractRef::new(staking_token),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Transfer 70% of the staking tokens to the staking contract
+            let transfer =
+                build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
+                    contract.transfer(
+                        staking_contract.clone(),
+                        INITIAL_SUPPLY * STAKING_ALLOCATION / 100,
+                        vec![],
+                    )
+                });
+
+            client
+                .call(&ink_e2e::alice(), transfer, 0, None)
+                .await
+                .expect("transfer failed");
+
+            // Alice stakes 1_000_000 tokens again without allowing the staking contract to spend tokens on her behalf
+            let alice_stake = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.stake(1_000_000));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_stake, 0, None)
+                    .await
+                    .return_value(),
+                Err(StakingError::InsufficientAllowance)
+            );
+
+            // Alice allows the staking contract to spend 1_000_000 tokens on her behalf
+            let approve = build_message::<StakingTokenContractRef>(staking_token.clone())
+                .call(|contract| contract.approve(staking_contract.clone(), 1_000_000));
+            client
+                .call(&ink_e2e::alice(), approve, 0, None)
+                .await
+                .expect("approve failed");
+
+            // Alice stakes 1_000_000 tokens
+            let alice_stake = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.stake(1_000_000));
+            client
+                .call(&ink_e2e::alice(), alice_stake, 0, None)
+                .await
+                .expect("stake failed");
+
+            // Check total staked amount
+            let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.total_supply());
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                1_000_000
+            );
+
+            // Check staked amount of alice
+            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
+            let alice_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.balance_of(alice_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                1_000_000
+            );
+
+            // Bob stakes 500_000 tokens
+            // Alic transfers 500_000 tokens to Bob
+            let transfer =
+                build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
+                    contract.transfer(
+                        ink_e2e::account_id(ink_e2e::AccountKeyring::Bob),
+                        500_000,
+                        vec![],
+                    )
+                });
+            client
+                .call(&ink_e2e::alice(), transfer, 0, None)
+                .await
+                .expect("transfer failed");
+
+            // Bob allows the staking contract to spend 500_000 tokens on his behalf
+            let approve = build_message::<StakingTokenContractRef>(staking_token.clone())
+                .call(|contract| contract.approve(staking_contract.clone(), 500_000));
+            client
+                .call(&ink_e2e::bob(), approve, 0, None)
+                .await
+                .expect("approve failed");
+
+            // Bob stakes 500_000 tokens
+            let bob_stake = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.stake(500_000));
+            client
+                .call(&ink_e2e::bob(), bob_stake, 0, None)
+                .await
+                .expect("stake failed");
+
+            // Check total staked amount
+            let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.total_supply());
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                1_500_000
+            );
+
+            // Check staked amount of bob
+            let bob_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
+            let bob_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.balance_of(bob_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &bob_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                500_000
+            );
+
+            Ok(())
+        }
+
+        // test that we can unstake tokens
+        #[ink_e2e::test]
+        async fn withdraw_works(mut client: Client<C, E>) -> E2EResult<()> {
+            // Instantiate the staking token contract
+            let staking_token = client
+                .instantiate(
+                    "staking_token",
+                    &ink_e2e::alice(),
+                    StakingTokenContractRef::new(
+                        Some(openbrush::traits::String::from("My Staking Token")),
+                        Some(openbrush::traits::String::from("MST")),
+                        18,
+                        INITIAL_SUPPLY,
+                    ),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Instantiate the staking contract
+            let staking_contract = client
+                .instantiate(
+                    "staking_contract",
+                    &ink_e2e::alice(),
+                    StakingContractRef::new(staking_token),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Transfer 70% of the staking tokens to the staking contract
+            let transfer =
+                build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
+                    contract.transfer(
+                        staking_contract.clone(),
+                        INITIAL_SUPPLY * STAKING_ALLOCATION / 100,
+                        vec![],
+                    )
+                });
+
+            client
+                .call(&ink_e2e::alice(), transfer, 0, None)
+                .await
+                .expect("transfer failed");
+
+            // Alice tries to withdraw 1_000_000 tokens from the staking contract
+            let alice_withdraw = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.withdraw(1_000_000));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_withdraw, 0, None)
+                    .await
+                    .return_value(),
+                Err(StakingError::InsufficientBalance),
+            );
+
+            // Alice allows the staking contract to spend 1_000_000 tokens on her behalf
+            let approve = build_message::<StakingTokenContractRef>(staking_token.clone())
+                .call(|contract| contract.approve(staking_contract.clone(), 1_000_000));
+            client
+                .call(&ink_e2e::alice(), approve, 0, None)
+                .await
+                .expect("approve failed");
+
+            // Alice stakes 1_000_000 tokens
+            let alice_stake = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.stake(1_000_000));
+            client
+                .call(&ink_e2e::alice(), alice_stake, 0, None)
+                .await
+                .expect("stake failed");
+
+            // Check total staked amount
+            let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.total_supply());
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                1_000_000
+            );
+
+            // Check staked amount of alice
+            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
+            let alice_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.balance_of(alice_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                1_000_000
+            );
+
+            // Alice withdraws 500_000 tokens
+            let alice_withdraw = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.withdraw(500_000));
+            client
+                .call(&ink_e2e::alice(), alice_withdraw, 0, None)
+                .await
+                .expect("withdraw failed");
+
+            // Check total staked amount
+            let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.total_supply());
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                500_000
+            );
+
+            // Check staked amount of alice
+            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
+            let alice_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.balance_of(alice_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_staked_amount, 0, None)
+                    .await
+                    .return_value(),
+                500_000
+            );
+
+            Ok(())
         }
     }
 }
