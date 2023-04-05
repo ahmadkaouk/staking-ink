@@ -14,64 +14,81 @@ macro_rules! ensure {
     };
 }
 
-impl<T: Storage<data::Data>> Staking for T {
+impl<T> Staking for T
+where
+    T: Storage<data::Data> + Internal,
+{
     default fn stake(&mut self, amount: Balance) -> Result<(), StakingError> {
+        ensure!(amount > 0, StakingError::ZeroAmount);
+
         let staker = Self::env().caller();
         let contract = Self::env().account_id();
         let staking_token = self.data().staking_token;
 
-        // ensure the staker gave allowance to the contract
         ensure!(
             PSP22Ref::allowance(&staking_token, staker, contract) >= amount,
             StakingError::InsufficientAllowance
         );
 
-        // ensure the user has enough tokens
         ensure!(
             PSP22Ref::balance_of(&staking_token, staker) >= amount,
             StakingError::InsufficientBalance
         );
 
-        // Transfer tokens from the caller to the contract
+        self.update_reward(staker);
         PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
 
-        // Update the total amount of tokens staked
-        self.data().total_staked += amount;
-        // Update the amount of tokens staked by the staker
-        let new_amount = self.data().stakers.get(&staker).unwrap_or(0) + amount;
-        self.data().stakers.insert(&staker, &new_amount);
+        let new_amount = self.data().balances.get(&staker).unwrap_or(0) + amount;
+        self.data().balances.insert(&staker, &new_amount);
+        self.data().total_supply += amount;
+
         Ok(())
     }
 
-    default fn unstake(&mut self, amount: Balance) -> Result<(), StakingError> {
+    default fn withdraw(&mut self, amount: Balance) -> Result<(), StakingError> {
+        ensure!(amount > 0, StakingError::ZeroAmount);
+
         let staker = Self::env().caller();
         let contract = Self::env().account_id();
         let staking_token = self.data().staking_token;
+        let staked_amount = self.data().balances.get(&staker).unwrap_or(0);
 
-        // ensure the user has enough tokens
-        let staked_amount = self.data().stakers.get(&staker).unwrap_or(0);
         ensure!(staked_amount >= amount, StakingError::InsufficientBalance);
 
-        // Transfer tokens from the contract to the caller
+        self.update_reward(staker);
         PSP22Ref::transfer_from(&staking_token, contract, staker, amount, Vec::<u8>::new())?;
 
-        // Update the amount of tokens staked by the caller
         self.data()
-            .stakers
+            .balances
             .insert(&staker, &(staked_amount - amount));
 
         Ok(())
     }
 
-    default fn claim_rewards(&mut self) -> Result<(), StakingError> {
+    default fn get_reward(&mut self) -> Result<(), StakingError> {
+        let staker = Self::env().caller();
+        let rewards = self.data().rewards.get(&staker).unwrap_or(0);
+        ensure!(rewards > 0, StakingError::NoStakingRewards);
+        self.update_reward(staker);
+        self.data().rewards.insert(&staker, &0);
+        Ok(())
+    }
+
+    default fn exit(&mut self) -> Result<(), StakingError> {
+        let staker = Self::env().caller();
+        let staked_amount = self.data().balances.get(&staker).unwrap_or(0);
+        self.withdraw(staked_amount)?;
+        self.get_reward()?;
+        self.data().rewards.insert(&staker, &0);
+        self.data().balances.insert(&staker, &0);
         Ok(())
     }
 
     default fn staked_amount(&self, account: AccountId) -> Balance {
-        self.data().stakers.get(&account).unwrap_or(0)
+        self.data().balances.get(&account).unwrap_or(0)
     }
 
-    default fn total_staked(&self) -> Balance {
-        self.data().total_staked
+    default fn total_supply(&self) -> Balance {
+        self.data().total_supply
     }
 }
