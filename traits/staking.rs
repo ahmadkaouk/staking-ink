@@ -37,19 +37,12 @@ pub trait Staking {
     #[ink(message)]
     fn get_reward(&mut self) -> Result<(), StakingError>;
 
-    /// Exits the staking contract. The caller's staked tokens and staking rewards are transferred
-    /// to the caller's account.
-    ///
-    /// Returns `StakingError::NoStakingRewards` if the caller has no staking rewards.
-    #[ink(message)]
-    fn exit(&mut self) -> Result<(), StakingError>;
-
     /// Returns the amount of tokens staked by the specified user. If the user has not staked any
     /// tokens, this method returns `0`.
     ///
     /// `staker` - The address of the user.
     #[ink(message)]
-    fn staked_amount(&self, staker: AccountId) -> Balance;
+    fn balance_of(&self, staker: AccountId) -> Balance;
 
     /// Returns the total amount of tokens staked.
     #[ink(message)]

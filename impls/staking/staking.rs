@@ -49,18 +49,18 @@ where
         ensure!(amount > 0, StakingError::ZeroAmount);
 
         let staker = Self::env().caller();
-        let contract = Self::env().account_id();
         let staking_token = self.data().staking_token;
         let staked_amount = self.data().balances.get(&staker).unwrap_or(0);
 
         ensure!(staked_amount >= amount, StakingError::InsufficientBalance);
 
         self.update_reward(staker);
-        PSP22Ref::transfer_from(&staking_token, contract, staker, amount, Vec::<u8>::new())?;
+        PSP22Ref::transfer(&staking_token, staker, amount, Vec::<u8>::new())?;
 
         self.data()
             .balances
             .insert(&staker, &(staked_amount - amount));
+        self.data().total_supply -= amount;
 
         Ok(())
     }
@@ -74,17 +74,7 @@ where
         Ok(())
     }
 
-    default fn exit(&mut self) -> Result<(), StakingError> {
-        let staker = Self::env().caller();
-        let staked_amount = self.data().balances.get(&staker).unwrap_or(0);
-        self.withdraw(staked_amount)?;
-        self.get_reward()?;
-        self.data().rewards.insert(&staker, &0);
-        self.data().balances.insert(&staker, &0);
-        Ok(())
-    }
-
-    default fn staked_amount(&self, account: AccountId) -> Balance {
+    default fn balance_of(&self, account: AccountId) -> Balance {
         self.data().balances.get(&account).unwrap_or(0)
     }
 
