@@ -6,16 +6,18 @@ edition = "2021"
 
 [dependencies]
 ink        = { version = "4.1.0", default-features = false }
-openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.1.0", default-features = false, features = [ "psp37", ] }
+openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag = "3.1.0", default-features = false, features = [ "psp37", "access_control"] }
 scale      = { package = "parity-scale-codec", version = "3", default-features = false, features = [ "derive", ] }
 scale-info = { version = "2.3", default-features = false, features = [ "derive", ], optional = true }
+
+staking_dapp     = { path = "../..", default-features = false }
 
 [dev-dependencies]
 ink_e2e = "4.0.1"
 
 [lib]
 path       = "lib.rs"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 default           = ["std"]

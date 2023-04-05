@@ -1,5 +1,5 @@
 use openbrush::{
-    contracts::traits::psp22::PSP22Error,
+    contracts::traits::{psp22::PSP22Error, psp37::PSP37Error},
     traits::{AccountId, Balance, Timestamp},
 };
 
@@ -61,6 +61,8 @@ pub trait Internal {
     fn earned(&self, account: AccountId) -> Balance;
 
     fn last_time_reward_applicable(&self) -> Timestamp;
+
+    fn update_reputation(&mut self, staker: AccountId);
 }
 
 // Define an enum for the error codes that can be returned by the Staking trait.
@@ -77,10 +79,18 @@ pub enum StakingError {
     ZeroAmount,
     /// PSP22 error
     PSP22Error(PSP22Error),
+    /// PSP37 error
+    PSP37Error(PSP37Error),
 }
 
 impl From<PSP22Error> for StakingError {
     fn from(error: PSP22Error) -> Self {
         Self::PSP22Error(error)
+    }
+}
+
+impl From<PSP37Error> for StakingError {
+    fn from(error: PSP37Error) -> Self {
+        Self::PSP37Error(error.into())
     }
 }

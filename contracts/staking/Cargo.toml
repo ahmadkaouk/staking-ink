@@ -11,8 +11,9 @@ openbrush  = { git = "https://github.com/727-Ventures/openbrush-contracts/", tag
 scale      = { package = "parity-scale-codec", version = "3", default-features = false, features = [ "derive", ] }
 scale-info = { version = "2.3", default-features = false, features = [ "derive", ], optional = true }
 
-staking_dapp  = { path = "../..", default-features = false }
-staking_token = { path = "../staking_token", default-features = false, features = [ "ink-as-dependency", ] }
+staking_dapp     = { path = "../..", default-features = false }
+staking_token    = { path = "../staking_token", default-features = false, features = [ "ink-as-dependency", ] }
+reputation_token = { path = "../reputation_token", default-features = false, features = [ "ink-as-dependency", ] }
 
 [dev-dependencies]
 ink_e2e = "4.0.1"
@@ -28,6 +29,7 @@ std               = [
                 "scale/std",
                 "scale-info/std",
                 "staking_token/std",
+                "reputation_token/std",
                 "staking_dapp/std",
                 "openbrush/std"
             ]

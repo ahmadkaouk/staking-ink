@@ -4,7 +4,11 @@
 #[openbrush::contract]
 pub mod staking {
     use core::ops::Mul;
-    use openbrush::traits::{DefaultEnv, Storage};
+    use openbrush::{
+        storage::Mapping,
+        traits::{DefaultEnv, Storage},
+    };
+    use staking_dapp::traits::reputation::ReputationRef;
     use staking_dapp::{
         impls::staking::{data, staking::*},
         traits::staking::*,
@@ -14,12 +18,15 @@ pub mod staking {
     const INITIAL_REWARD_RATE: u128 = 50;
     const STAKING_ALLOCATION: u128 = 70;
     const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
+    const REPUTATION_DURATION: u128 = 60 * 60 * 24;
 
     #[ink(storage)]
-    #[derive(Default, Storage)]
+    #[derive(Storage)]
     pub struct StakingContract {
         #[storage_field]
         staking: data::Data,
+        reputation_token: AccountId,
+        reputation_last_update: Mapping<AccountId, Timestamp>,
     }
 
     impl Internal for StakingContract {
@@ -75,18 +82,35 @@ pub mod staking {
                 self.staking.period_finish
             }
         }
+
+        fn update_reputation(&mut self, staker: AccountId) {
+            let now = Self::env().block_timestamp();
+            let time_elapsed = now - self.reputation_last_update.get(&staker).unwrap_or(0);
+            let new_reputation = self.staking.balances.get(&staker).unwrap_or(0)
+                * time_elapsed as u128
+                / REPUTATION_DURATION;
+
+            self.reputation_last_update.insert(&staker, &now);
+            ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
+        }
     }
 
     impl Staking for StakingContract {}
 
     impl StakingContract {
         #[ink(constructor)]
-        pub fn new(staking_token: AccountId) -> Self {
-            let mut instance = Self::default();
+        pub fn new(staking_token: AccountId, reputation_token: AccountId) -> Self {
+            let mut instance = StakingContract {
+                staking: Default::default(),
+                reputation_token,
+                reputation_last_update: Default::default(),
+            };
 
+            let now = instance.env().block_timestamp();
             instance.staking.staking_token = staking_token;
-            instance.staking.period_start = instance.env().block_timestamp();
-            instance.staking.period_finish = SECONDS_PER_YEAR;
+            instance.staking.period_start = now;
+            instance.staking.period_finish = now + SECONDS_PER_YEAR;
+            instance.reputation_token = reputation_token;
             instance
         }
     }
@@ -104,7 +128,10 @@ pub mod staking {
             let staking_token =
                 StakingTokenContract::new(name.clone(), symbol.clone(), 18, INITIAL_SUPPLY);
 
-            let staking_contract = StakingContract::new(staking_token.env().account_id());
+            let reputation_token = AccountId::from([0x1; 32]);
+
+            let staking_contract =
+                StakingContract::new(staking_token.env().account_id(), reputation_token);
             assert_eq!(staking_contract.staking.total_supply, 0);
             assert_eq!(staking_contract.staking.period_start, 0);
             assert_eq!(staking_contract.staking.period_finish, SECONDS_PER_YEAR);
@@ -124,9 +151,8 @@ pub mod staking {
         use super::*;
         /// A helper function used for calling contract messages.
         use ink_e2e::build_message;
-        use openbrush::contracts::psp22::{
-            extensions::metadata::psp22metadata_external::PSP22Metadata, psp22_external::PSP22,
-        };
+        use openbrush::contracts::psp22::psp22_external::PSP22;
+        use reputation_token::token::ReputationTokenContractRef;
         use staking_dapp::traits::staking::staking_external::Staking;
         use staking_token::token::StakingTokenContractRef;
 
@@ -134,7 +160,9 @@ pub mod staking {
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         /// We test that we can upload and instantiate the contract using its constructor.
-        #[ink_e2e::test(additional_contracts = "../staking_token/Cargo.toml")]
+        #[ink_e2e::test(
+            additional_contracts = "../staking_token/Cargo.toml ../reputation_token/Cargo.toml"
+        )]
         async fn instantiation_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             // Instantiate the staking token contract
             let staking_token = client
@@ -154,11 +182,23 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            let reputation_token = client
+                .instantiate(
+                    "reputation_token",
+                    &ink_e2e::alice(),
+                    ReputationTokenContractRef::new(),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
             let staking_contract = client
                 .instantiate(
                     "staking_contract",
                     &ink_e2e::alice(),
-                    StakingContractRef::new(staking_token),
+                    StakingContractRef::new(staking_token, reputation_token),
                     0,
                     None,
                 )
@@ -213,12 +253,25 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            // Instantiate the reputation token contract
+            let reputation_token = client
+                .instantiate(
+                    "reputation_token",
+                    &ink_e2e::alice(),
+                    ReputationTokenContractRef::new(),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
             // Instantiate the staking contract
             let staking_contract = client
                 .instantiate(
                     "staking_contract",
                     &ink_e2e::alice(),
-                    StakingContractRef::new(staking_token),
+                    StakingContractRef::new(staking_token, reputation_token),
                     0,
                     None,
                 )
@@ -369,12 +422,25 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            // Instantiate the reputation token contract
+            let reputation_token = client
+                .instantiate(
+                    "reputation_token",
+                    &ink_e2e::alice(),
+                    ReputationTokenContractRef::new(),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
             // Instantiate the staking contract
             let staking_contract = client
                 .instantiate(
                     "staking_contract",
                     &ink_e2e::alice(),
-                    StakingContractRef::new(staking_token),
+                    StakingContractRef::new(staking_token, reputation_token),
                     0,
                     None,
                 )
@@ -501,12 +567,25 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            // Instantiate the reputation token contract
+            let reputation_token = client
+                .instantiate(
+                    "reputation_token",
+                    &ink_e2e::alice(),
+                    ReputationTokenContractRef::new(),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
             // Instantiate the staking contract
             let staking_contract = client
                 .instantiate(
                     "staking_contract",
                     &ink_e2e::alice(),
-                    StakingContractRef::new(staking_token),
+                    StakingContractRef::new(staking_token, reputation_token),
                     0,
                     None,
                 )
@@ -547,7 +626,9 @@ pub mod staking {
                 .await
                 .expect("stake failed");
 
-            // TODO How to simulate elapsed time here ?
+            // TODO How to simulate elapsed time here ? Does this work ?
+            // ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(SECONDS_PER_YEAR);
+            // ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
 
             // Get Reward for Alice
             let alice_reward = build_message::<StakingContractRef>(staking_contract.clone())
