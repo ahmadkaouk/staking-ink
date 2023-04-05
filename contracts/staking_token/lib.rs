@@ -11,13 +11,8 @@
 pub mod token {
     use openbrush::{
         contracts::psp22::extensions::metadata::*,
-        traits::{Storage, String as OBString},
+        traits::{self, Storage},
     };
-
-    /// The initial supply of the token: 1 billion (with 18 decimal places).
-    const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
-    /// The percentage of tokens sent to the staking contract: 70%.
-    const STAKING_ALLOCATION: u128 = 70;
 
     /// The main storage structure of the `StakingTokenContract` contract.
     #[ink(storage)]
@@ -39,33 +34,34 @@ pub mod token {
     impl StakingTokenContract {
         /// Creates a new `StakingTokenContract` instance with the given `name` and `symbol`.
         ///
-        /// The `staking_contract_address` parameter is the address where 70% of the
+        /// The `staking_contract` parameter is the address where 'staking_allocation' of the
         /// initial token supply will be sent.
         #[ink(constructor)]
         pub fn new(
-            name: Option<OBString>,
-            symbol: Option<OBString>,
-            staking_contract_address: AccountId,
+            name: Option<traits::String>,
+            symbol: Option<traits::String>,
+            decimals: u8,
+            initial_supply: Balance,
+            staking_allocation: u8,
+            staking_contract: AccountId,
         ) -> Self {
             let mut instance = Self::default();
 
             instance.metadata.name = name;
             instance.metadata.symbol = symbol;
-            instance.metadata.decimals = 18;
+            instance.metadata.decimals = decimals;
 
-            let staking_tokens = INITIAL_SUPPLY * STAKING_ALLOCATION / 100;
+            let staking_tokens = initial_supply * staking_allocation as u128 / 100;
 
             assert!(
                 instance
-                    ._mint_to(instance.env().caller(), INITIAL_SUPPLY - staking_tokens)
+                    ._mint_to(instance.env().caller(), initial_supply - staking_tokens)
                     .is_ok(),
                 "Failed to mint tokens to the contract creator"
             );
 
             assert!(
-                instance
-                    ._mint_to(staking_contract_address, staking_tokens)
-                    .is_ok(),
+                instance._mint_to(staking_contract, staking_tokens).is_ok(),
                 "Failed to mint tokens to the staking contract"
             );
 
@@ -78,13 +74,22 @@ pub mod token {
         use super::*;
         use openbrush::test_utils::*;
 
+        const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
+        const STAKING_ALLOCATION: u8 = 70;
+
         #[ink::test]
         fn constructor_sets_name_symbol_and_decimals() {
-            let name = Some(OBString::from("My Staking Token"));
-            let symbol = Some(OBString::from("MST"));
-            let staking_contract_address = AccountId::from([0x2; 32]);
-            let instance =
-                StakingTokenContract::new(name.clone(), symbol.clone(), staking_contract_address);
+            let name = Some(traits::String::from("My Staking Token"));
+            let symbol = Some(traits::String::from("MST"));
+            let staking_contract = AccountId::from([0x2; 32]);
+            let instance = StakingTokenContract::new(
+                name.clone(),
+                symbol.clone(),
+                18,
+                INITIAL_SUPPLY,
+                STAKING_ALLOCATION,
+                staking_contract,
+            );
 
             assert_eq!(instance.token_name(), name);
             assert_eq!(instance.token_symbol(), symbol);
@@ -95,17 +100,24 @@ pub mod token {
         /// assigning 70% to the staking contract and 30% to the contract creator.
         #[ink::test]
         fn constructor_distributes_tokens_correctly() {
-            let name = Some(OBString::from("My Staking Token"));
-            let symbol = Some(OBString::from("MST"));
-            let staking_contract_addr = accounts().bob;
-            let instance = StakingTokenContract::new(name.clone(), symbol.clone(), staking_contract_addr);
+            let name = Some(traits::String::from("My Staking Token"));
+            let symbol = Some(traits::String::from("MST"));
+            let staking_contract = accounts().bob;
+            let instance = StakingTokenContract::new(
+                name.clone(),
+                symbol.clone(),
+                18,
+                INITIAL_SUPPLY,
+                STAKING_ALLOCATION,
+                staking_contract,
+            );
             let owner = accounts().alice;
-            let staking_tokens = INITIAL_SUPPLY * STAKING_ALLOCATION / 100;
+            let staking_tokens = INITIAL_SUPPLY * STAKING_ALLOCATION as u128 / 100;
             let creator_tokens = INITIAL_SUPPLY - staking_tokens;
 
             assert_eq!(instance.total_supply(), INITIAL_SUPPLY);
             assert_eq!(instance.balance_of(owner), creator_tokens);
-            assert_eq!(instance.balance_of(staking_contract_addr), staking_tokens);
+            assert_eq!(instance.balance_of(staking_contract), staking_tokens);
         }
     }
 
@@ -119,6 +131,9 @@ pub mod token {
             extensions::metadata::psp22metadata_external::PSP22Metadata, psp22_external::PSP22,
         };
 
+        const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
+        const STAKING_ALLOCATION: u8 = 70;
+
         /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -126,11 +141,14 @@ pub mod token {
         #[ink_e2e::test]
         async fn instantiation_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             // Given
-            let staking_contract_addr = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
+            let staking_contract = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
             let constructor = StakingTokenContractRef::new(
-                Some(OBString::from("My Staking Token")),
-                Some(OBString::from("MST")),
-                staking_contract_addr,
+                Some(traits::String::from("My Staking Token")),
+                Some(traits::String::from("MST")),
+                18,
+                INITIAL_SUPPLY,
+                STAKING_ALLOCATION,
+                staking_contract,
             );
 
             // When
@@ -148,23 +166,25 @@ pub mod token {
                     .call_dry_run(&ink_e2e::alice(), &token_name, 0, None)
                     .await
                     .return_value(),
-                Some(OBString::from("My Staking Token"))
+                Some(traits::String::from("My Staking Token"))
             );
 
             // Check Token Symbol
-            let token_symbol = build_message::<StakingTokenContractRef>(contract_account_id.clone())
-                .call(|token| token.token_symbol());
+            let token_symbol =
+                build_message::<StakingTokenContractRef>(contract_account_id.clone())
+                    .call(|token| token.token_symbol());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &token_symbol, 0, None)
                     .await
                     .return_value(),
-                Some(OBString::from("MST"))
+                Some(traits::String::from("MST"))
             );
 
             // Check Token Decimals
-            let token_decimals = build_message::<StakingTokenContractRef>(contract_account_id.clone())
-                .call(|token| token.token_decimals());
+            let token_decimals =
+                build_message::<StakingTokenContractRef>(contract_account_id.clone())
+                    .call(|token| token.token_decimals());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &token_decimals, 0, None)
@@ -174,8 +194,9 @@ pub mod token {
             );
 
             // Check Total Supply
-            let total_supply = build_message::<StakingTokenContractRef>(contract_account_id.clone())
-                .call(|token| token.total_supply());
+            let total_supply =
+                build_message::<StakingTokenContractRef>(contract_account_id.clone())
+                    .call(|token| token.total_supply());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &total_supply, 0, None)
@@ -186,25 +207,26 @@ pub mod token {
 
             // Check Balance of Contract Owner (Alice)
             let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
-            let alice_balance = build_message::<StakingTokenContractRef>(contract_account_id.clone())
-                .call(|token| token.balance_of(alice_account));
+            let alice_balance =
+                build_message::<StakingTokenContractRef>(contract_account_id.clone())
+                    .call(|token| token.balance_of(alice_account));
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::bob(), &alice_balance, 0, None)
                     .await
                     .return_value(),
-                INITIAL_SUPPLY - (INITIAL_SUPPLY * STAKING_ALLOCATION / 100)
+                INITIAL_SUPPLY - (INITIAL_SUPPLY * STAKING_ALLOCATION as u128 / 100)
             );
 
             // Check Balance of Staking Contract (Bob)
             let bob_balance = build_message::<StakingTokenContractRef>(contract_account_id.clone())
-                .call(|token| token.balance_of(staking_contract_addr));
+                .call(|token| token.balance_of(staking_contract));
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &bob_balance, 0, None)
                     .await
                     .return_value(),
-                INITIAL_SUPPLY * STAKING_ALLOCATION / 100
+                INITIAL_SUPPLY * STAKING_ALLOCATION as u128 / 100
             );
 
             Ok(())
