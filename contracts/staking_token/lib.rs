@@ -71,7 +71,6 @@ pub mod token {
         fn constructor_sets_name_symbol_and_decimals() {
             let name = Some(traits::String::from("My Staking Token"));
             let symbol = Some(traits::String::from("MST"));
-            let staking_contract = AccountId::from([0x2; 32]);
             let instance =
                 StakingTokenContract::new(name.clone(), symbol.clone(), 18, INITIAL_SUPPLY);
 

@@ -67,10 +67,18 @@ where
 
     default fn get_reward(&mut self) -> Result<(), StakingError> {
         let staker = Self::env().caller();
-        let rewards = self.data().rewards.get(&staker).unwrap_or(0);
-        ensure!(rewards > 0, StakingError::NoStakingRewards);
         self.update_reward(staker);
-        self.data().rewards.insert(&staker, &0);
+
+        let rewards = self.data().rewards.get(&staker).unwrap_or(0);
+        if rewards > 0 {
+            PSP22Ref::transfer(
+                &self.data().staking_token,
+                staker,
+                rewards,
+                Vec::<u8>::new(),
+            )?;
+            self.data().rewards.insert(&staker, &0);
+        }
         Ok(())
     }
 

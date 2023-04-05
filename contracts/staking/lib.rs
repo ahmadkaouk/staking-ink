@@ -27,7 +27,7 @@ pub mod staking {
             let now = Self::env().block_timestamp();
             let years_elapsed = (now - self.staking.period_start) / SECONDS_PER_YEAR;
             self.staking.period_finish =
-                self.staking.period_start + years_elapsed * SECONDS_PER_YEAR;
+                self.staking.period_start + (years_elapsed + 1) * SECONDS_PER_YEAR;
             self.staking.reward_rate = (INITIAL_REWARD_RATE >> years_elapsed) as u128
                 * INITIAL_SUPPLY
                 * STAKING_ALLOCATION
@@ -86,7 +86,35 @@ pub mod staking {
 
             instance.staking.staking_token = staking_token;
             instance.staking.period_start = instance.env().block_timestamp();
+            instance.staking.period_finish = SECONDS_PER_YEAR;
             instance
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use ink::codegen::Env;
+        use staking_token::token::StakingTokenContract;
+
+        #[ink::test]
+        fn instantiation_works() {
+            let name = Some(openbrush::traits::String::from("My Staking Token"));
+            let symbol = Some(openbrush::traits::String::from("MST"));
+            let staking_token =
+                StakingTokenContract::new(name.clone(), symbol.clone(), 18, INITIAL_SUPPLY);
+
+            let staking_contract = StakingContract::new(staking_token.env().account_id());
+            assert_eq!(staking_contract.staking.total_supply, 0);
+            assert_eq!(staking_contract.staking.period_start, 0);
+            assert_eq!(staking_contract.staking.period_finish, SECONDS_PER_YEAR);
+            assert_eq!(staking_contract.staking.reward_rate, 0);
+            assert_eq!(staking_contract.staking.reward_per_token_stored, 0);
+            assert_eq!(staking_contract.staking.last_update_time, 0);
+            assert_eq!(
+                staking_contract.staking.staking_token,
+                staking_token.env().account_id()
+            );
         }
     }
 
@@ -439,7 +467,6 @@ pub mod staking {
             );
 
             // Check staked amount of alice
-            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
             let alice_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
                 .call(|contract| contract.balance_of(alice_account));
             assert_eq!(
@@ -448,6 +475,98 @@ pub mod staking {
                     .await
                     .return_value(),
                 500_000
+            );
+
+            Ok(())
+        }
+
+        // Test reward distribution
+        #[ink_e2e::test]
+        async fn rewards_distribution_works(mut client: Client<C, E>) -> E2EResult<()> {
+            // Instantiate the staking token contract
+            let staking_token = client
+                .instantiate(
+                    "staking_token",
+                    &ink_e2e::alice(),
+                    StakingTokenContractRef::new(
+                        Some(openbrush::traits::String::from("My Staking Token")),
+                        Some(openbrush::traits::String::from("MST")),
+                        18,
+                        INITIAL_SUPPLY,
+                    ),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Instantiate the staking contract
+            let staking_contract = client
+                .instantiate(
+                    "staking_contract",
+                    &ink_e2e::alice(),
+                    StakingContractRef::new(staking_token),
+                    0,
+                    None,
+                )
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            // Transfer 70% of the staking tokens to the staking contract
+            let transfer =
+                build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
+                    contract.transfer(
+                        staking_contract.clone(),
+                        INITIAL_SUPPLY * STAKING_ALLOCATION / 100,
+                        vec![],
+                    )
+                });
+
+            client
+                .call(&ink_e2e::alice(), transfer, 0, None)
+                .await
+                .expect("transfer failed");
+
+            // Alice allows the staking contract to spend 100_000_000^18 tokens on her behalf
+            let approve =
+                build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
+                    contract.approve(staking_contract.clone(), 100_000_000 * 10u128.pow(18))
+                });
+            client
+                .call(&ink_e2e::alice(), approve, 0, None)
+                .await
+                .expect("approve failed");
+
+            // Alice stakes 100_000_000^18 tokens
+            let alice_stake = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.stake(100_000_000 * 10u128.pow(18)));
+            client
+                .call(&ink_e2e::alice(), alice_stake, 0, None)
+                .await
+                .expect("stake failed");
+
+            // TODO How to simulate elapsed time here ?
+
+            // Get Reward for Alice
+            let alice_reward = build_message::<StakingContractRef>(staking_contract.clone())
+                .call(|contract| contract.get_reward());
+            client
+                .call(&ink_e2e::alice(), alice_reward, 0, None)
+                .await
+                .expect("get_reward failed");
+
+            // Check the balance of Alice
+            let alice_account = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
+            let alice_balance = build_message::<StakingTokenContractRef>(staking_token.clone())
+                .call(|contract| contract.balance_of(alice_account));
+            assert_eq!(
+                client
+                    .call_dry_run(&ink_e2e::alice(), &alice_balance, 0, None)
+                    .await
+                    .return_value(),
+                0
             );
 
             Ok(())
