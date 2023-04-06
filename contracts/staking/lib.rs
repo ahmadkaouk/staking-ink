@@ -89,7 +89,8 @@ pub mod staking {
             let time_elapsed = now - self.reputation_last_update.get(&staker).unwrap_or(0);
             let new_reputation = self.staking.balances.get(&staker).unwrap_or(0)
                 * time_elapsed as u128
-                / REPUTATION_DURATION;
+                / REPUTATION_DURATION
+                / 10u128.pow(18);
 
             self.reputation_last_update.insert(&staker, &now);
             let _ =
