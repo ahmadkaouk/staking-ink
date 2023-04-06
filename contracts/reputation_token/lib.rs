@@ -96,5 +96,21 @@ pub mod token {
             assert_eq!(contract.balance_of(charlie, Some(Id::U32(1))), 1);
             assert_eq!(contract.balance_of(charlie, Some(Id::U32(2))), 1);
         }
+
+        #[ink::test]
+        fn unauthorized() {
+            let mut contract = ReputationTokenContract::new();
+            let alice = AccountId::from([0x1; 32]);
+            let bob = AccountId::from([0x2; 32]);
+
+            contract.set_minter(alice).unwrap();
+            contract.update_reputation(bob, 1_000_000_000).unwrap();
+
+            assert_eq!(contract.balance_of(bob, Some(Id::U32(1))), 1);
+
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(bob);
+            let result = contract.update_reputation(bob, 10_000_000_000);
+            assert!(result.is_err());
+        }
     }
 }
