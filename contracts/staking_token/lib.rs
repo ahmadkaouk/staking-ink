@@ -2,11 +2,6 @@
 #![feature(min_specialization)]
 
 /// A PSP-22 compliant staking token with metadata.
-///
-/// This token has an initial supply of 1 billion tokens with 18 decimal places.
-/// During the token creation, 70% of the initial supply is sent to the specified
-/// staking contract address, while the remaining 30% is assigned to the contract
-/// creator.
 #[openbrush::contract]
 pub mod token {
     use openbrush::{
@@ -32,10 +27,8 @@ pub mod token {
 
     /// Implementation of the `StakingTokenContract` contract.
     impl StakingTokenContract {
-        /// Creates a new `StakingTokenContract` instance with the given `name` and `symbol`.
-        ///
-        /// The `staking_contract` parameter is the address where 'staking_allocation' of the
-        /// initial token supply will be sent.
+        /// Creates a new `StakingTokenContract` instance with the given `name`,`symbol`,
+        /// `decimals` and `initial_supply`.
         #[ink(constructor)]
         pub fn new(
             name: Option<traits::String>,
@@ -83,7 +76,6 @@ pub mod token {
         fn constructor_distributes_tokens_correctly() {
             let name = Some(traits::String::from("My Staking Token"));
             let symbol = Some(traits::String::from("MST"));
-            let staking_contract = accounts().bob;
             let instance =
                 StakingTokenContract::new(name.clone(), symbol.clone(), 18, INITIAL_SUPPLY);
             let owner = accounts().alice;
@@ -97,7 +89,6 @@ pub mod token {
     mod e2e_tests {
 
         use super::*;
-        /// A helper function used for calling contract messages.
         use ink_e2e::build_message;
         use openbrush::contracts::psp22::{
             extensions::metadata::psp22metadata_external::PSP22Metadata, psp22_external::PSP22,
@@ -112,7 +103,6 @@ pub mod token {
         #[ink_e2e::test]
         async fn instantiation_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             // Given
-            let staking_contract = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
             let constructor = StakingTokenContractRef::new(
                 Some(traits::String::from("My Staking Token")),
                 Some(traits::String::from("MST")),
@@ -120,7 +110,7 @@ pub mod token {
                 INITIAL_SUPPLY,
             );
 
-            // When
+            // Instantiate the contract
             let contract_account_id = client
                 .instantiate("staking_token", &ink_e2e::alice(), constructor, 0, None)
                 .await
