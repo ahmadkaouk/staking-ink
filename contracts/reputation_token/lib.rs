@@ -75,4 +75,26 @@ pub mod token {
             Ok(())
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use ink_lang as ink;
+
+        #[ink::test]
+        fn test_reputation() {
+            let mut contract = ReputationTokenContract::new();
+            let alice = AccountId::from([0x1; 32]);
+            let bob = AccountId::from([0x2; 32]);
+            let charlie = AccountId::from([0x3; 32]);
+
+            contract.set_minter(alice).unwrap();
+            contract.update_reputation(bob, 1_000_000_000).unwrap();
+            contract.update_reputation(charlie, 10_000_000_000).unwrap();
+
+            assert_eq!(contract.balance_of(bob, 0), 1);
+            assert_eq!(contract.balance_of(charlie, 0), 1);
+            assert_eq!(contract.balance_of(charlie, 1), 1);
+        }
+    }
 }
