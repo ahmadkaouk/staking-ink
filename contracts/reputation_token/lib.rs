@@ -34,7 +34,7 @@ pub mod token {
 
             for i in level..new_level {
                 assert!(self
-                    ._mint_to(account, [(Id::U32(i), 1u128)].to_vec())
+                    ._mint_to(account, [(Id::U32(i + 1), 1u128)].to_vec())
                     .is_ok());
             }
             self.reputation.insert(&account, &new_reputation);
@@ -79,7 +79,7 @@ pub mod token {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use ink_lang as ink;
+        use openbrush::contracts::psp37::Id;
 
         #[ink::test]
         fn test_reputation() {
@@ -92,9 +92,9 @@ pub mod token {
             contract.update_reputation(bob, 1_000_000_000).unwrap();
             contract.update_reputation(charlie, 10_000_000_000).unwrap();
 
-            assert_eq!(contract.balance_of(bob, 0), 1);
-            assert_eq!(contract.balance_of(charlie, 0), 1);
-            assert_eq!(contract.balance_of(charlie, 1), 1);
+            assert_eq!(contract.balance_of(bob, Some(Id::U32(1))), 1);
+            assert_eq!(contract.balance_of(charlie, Some(Id::U32(1))), 1);
+            assert_eq!(contract.balance_of(charlie, Some(Id::U32(2))), 1);
         }
     }
 }
