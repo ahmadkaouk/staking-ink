@@ -92,7 +92,8 @@ pub mod staking {
                 / REPUTATION_DURATION;
 
             self.reputation_last_update.insert(&staker, &now);
-            let _ =ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
+            let _ =
+                ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
         }
     }
 
@@ -113,6 +114,11 @@ pub mod staking {
             instance.staking.period_finish = now + SECONDS_PER_YEAR;
             instance.reputation_token = reputation_token;
             instance
+        }
+
+        #[ink(message)]
+        pub fn claim_reputation(&mut self) {
+            self.update_reputation(self.env().caller());
         }
     }
 
