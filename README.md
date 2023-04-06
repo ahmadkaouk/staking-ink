@@ -17,7 +17,7 @@ The application consists of several components:
 - 70% of the tokens will be sent to the staking contract
 - 18 decimals
 
-## Staking Contract
+### Staking Contract
 - Allows users to stake the created PSP22 token
 - Stakers will get their share of the tokens inside the staking contract, with:
     - 50% of the tokens being released during the first 365 days (35% of the initial supply)
@@ -27,7 +27,7 @@ The application consists of several components:
 - Users can stake, unstake, and claim rewards
 - Reward distribution happens on any of these actions
 
-## Reputation Token
+### Reputation Token
 - NFT token - Multi-token (PSP37/ERC1155)
 - Rewarded to stakers on certain milestones
 - Staking 1 token (10**18 tokens) for 1 day increases reputation by 1
