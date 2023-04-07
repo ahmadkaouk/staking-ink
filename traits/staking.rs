@@ -53,16 +53,16 @@ pub trait Internal {
     fn update_reward_rate(&mut self) -> Result<(), StakingError>;
 
     /// Returns the staking reward per token.
-    fn reward_per_token(&self) -> Balance;
+    fn reward_per_token(&self) -> Result<Balance, StakingError>;
 
     /// Updates the staking rewards for the specified user.
-    fn update_reward(&mut self, account: AccountId);
+    fn update_reward(&mut self, account: AccountId) -> Result<(), StakingError>;
 
-    fn earned(&self, account: AccountId) -> Balance;
+    fn earned(&self, account: AccountId) -> Result<Balance, StakingError>;
 
     fn last_time_reward_applicable(&self) -> Timestamp;
 
-    fn update_reputation(&mut self, staker: AccountId);
+    fn update_reputation(&mut self, staker: AccountId) -> Result<(), StakingError>;
 }
 
 // Define an enum for the error codes that can be returned by the Staking trait.

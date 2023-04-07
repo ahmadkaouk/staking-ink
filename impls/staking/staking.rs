@@ -35,7 +35,7 @@ where
             StakingError::InsufficientBalance
         );
 
-        self.update_reward(staker);
+        self.update_reward(staker)?;
         PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
 
         let new_amount = self
@@ -65,7 +65,7 @@ where
 
         ensure!(staked_amount >= amount, StakingError::InsufficientBalance);
 
-        // self.update_reward(staker);
+        // self.update_reward(staker)?;
         PSP22Ref::transfer(&staking_token, staker, amount, Vec::<u8>::new())?;
 
         self.data().balances.insert(
@@ -87,7 +87,7 @@ where
     default fn get_reward(&mut self) -> Result<(), StakingError> {
         let staker = Self::env().caller();
 
-        self.update_reward(staker);
+        self.update_reward(staker)?;
 
         let rewards = self.data().rewards.get(&staker).unwrap_or(0);
         if rewards > 0 {

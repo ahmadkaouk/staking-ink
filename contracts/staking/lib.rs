@@ -48,45 +48,79 @@ pub mod staking {
                 .checked_add(seconds_elapsed)
                 .ok_or(StakingError::OverflowError)?;
 
-            // The percentage of the initial supply released per year
-            let percentage_released = INITIAL_REWARD_RATE >> years_elapsed;
-            self.staking.reward_rate = INITIAL_SUPPLY * STAKING_ALLOCATION * percentage_released
-                / (100 * 100 * SECONDS_PER_YEAR as u128);
+            self.staking.reward_rate = INITIAL_SUPPLY
+                .checked_mul(STAKING_ALLOCATION)
+                .ok_or(StakingError::OverflowError)?
+                .checked_mul(INITIAL_REWARD_RATE >> years_elapsed)
+                .ok_or(StakingError::OverflowError)?
+                .checked_div(100)
+                .ok_or(StakingError::OverflowError)?
+                .checked_div(100)
+                .ok_or(StakingError::OverflowError)?
+                .checked_div(SECONDS_PER_YEAR.into())
+                .ok_or(StakingError::OverflowError)?;
 
             Ok(())
         }
 
-        fn reward_per_token(&self) -> u128 {
+        fn reward_per_token(&self) -> Result<Balance, StakingError> {
             if self.staking.total_supply == 0 {
-                self.staking.reward_per_token_stored
+                Ok(self.staking.reward_per_token_stored)
             } else {
-                let delta_time = self.last_time_reward_applicable() - self.staking.last_update_time;
-                let reward = delta_time as u128 * self.staking.reward_rate;
-                self.staking.reward_per_token_stored + (reward / self.staking.total_supply)
+                let delta_time = self
+                    .last_time_reward_applicable()
+                    .checked_sub(self.staking.last_update_time)
+                    .ok_or(StakingError::OverflowError)?;
+
+                let reward = self
+                    .staking
+                    .reward_rate
+                    .checked_mul(delta_time as u128)
+                    .ok_or(StakingError::OverflowError)?;
+
+                self.staking
+                    .reward_per_token_stored
+                    .checked_add(
+                        reward
+                            .checked_mul(self.staking.total_supply)
+                            .ok_or(StakingError::OverflowError)?,
+                    )
+                    .ok_or(StakingError::OverflowError)
             }
         }
 
-        fn update_reward(&mut self, staker: AccountId) {
+        fn update_reward(&mut self, staker: AccountId) -> Result<(), StakingError> {
             // self.update_reputation(staker);
-            self.update_reward_rate();
-            self.staking.reward_per_token_stored = self.reward_per_token();
+            self.update_reward_rate()?;
+            self.staking.reward_per_token_stored = self.reward_per_token()?;
             self.staking.last_update_time = self.last_time_reward_applicable();
-            self.staking.rewards.insert(&staker, &self.earned(staker));
+            self.staking.rewards.insert(&staker, &self.earned(staker)?);
             self.staking
                 .user_reward_per_token_paid
                 .insert(&staker, &self.staking.reward_per_token_stored);
+            Ok(())
         }
 
-        fn earned(&self, staker: AccountId) -> Balance {
-            self.staking.balances.get(&staker).unwrap_or(0).mul(
-                self.reward_per_token()
-                    - self
-                        .staking
-                        .user_reward_per_token_paid
-                        .get(&staker)
-                        .unwrap_or(0),
-            ) / 10u128.pow(18)
-                + self.staking.rewards.get(&staker).unwrap_or(0)
+        fn earned(&self, staker: AccountId) -> Result<Balance, StakingError> {
+            let balance = self.staking.balances.get(&staker).unwrap_or(0);
+
+            let new_rewards = balance
+                .mul(
+                    self.reward_per_token()?
+                        .checked_sub(
+                            self.staking
+                                .user_reward_per_token_paid
+                                .get(&staker)
+                                .unwrap_or(0),
+                        )
+                        .ok_or(StakingError::OverflowError)?,
+                )
+                .checked_div(10u128.pow(18))
+                .ok_or(StakingError::DivideByZero)?;
+
+            new_rewards
+                .checked_add(self.staking.rewards.get(&staker).unwrap_or(0))
+                .ok_or(StakingError::OverflowError)
         }
 
         fn last_time_reward_applicable(&self) -> Timestamp {
@@ -98,18 +132,31 @@ pub mod staking {
             }
         }
 
-        fn update_reputation(&mut self, staker: AccountId) {
+        fn update_reputation(&mut self, staker: AccountId) -> Result<(), StakingError> {
             let now = Self::env().block_timestamp();
             let last_time_update = self.reputation_last_update.get(&staker).unwrap_or(0);
-            let time_elapsed = now - last_time_update;
-            let rate = (time_elapsed / REPUTATION_DURATION) as Balance;
+
+            let time_elapsed = now
+                .checked_sub(last_time_update)
+                .ok_or(StakingError::OverflowError)?;
+
+            let rate = time_elapsed
+                .checked_div(REPUTATION_DURATION)
+                .ok_or(StakingError::DivideByZero)?;
+
             let balance = self.staking.balances.get(&staker).unwrap_or(0);
-            let new_reputation = balance * rate / 10u128.pow(18);
+
+            let new_reputation = balance
+                .checked_mul(rate as u128)
+                .ok_or(StakingError::OverflowError)?
+                .checked_div(10u128.pow(18))
+                .ok_or(StakingError::DivideByZero)?;
 
             self.reputation_last_update.insert(&staker, &now);
 
             let _ =
                 ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
+            Ok(())
         }
     }
 
@@ -133,8 +180,9 @@ pub mod staking {
         }
 
         #[ink(message)]
-        pub fn claim_reputation(&mut self) {
-            self.update_reputation(self.env().caller());
+        pub fn claim_reputation(&mut self) -> Result<(), StakingError> {
+            self.update_reputation(self.env().caller())?;
+            Ok(())
         }
     }
 
@@ -179,8 +227,8 @@ pub mod staking {
             let mut staking_contract =
                 StakingContract::new(staking_token.env().account_id(), reputation_token);
 
-            staking_contract.update_reward_rate();
-            assert_eq!(staking_contract.staking.reward_rate / 10u128.pow(18), 11);
+            staking_contract.update_reward_rate().unwrap();
+            assert_eq!(staking_contract.staking.reward_rate, 11098427194317605276);
         }
     }
 
