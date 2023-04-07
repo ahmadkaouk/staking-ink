@@ -368,6 +368,16 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            // Grant Staking contract Minter role in the reputation token contract
+            let grant_minter_role =
+                build_message::<ReputationTokenContractRef>(reputation_token.clone())
+                    .call(|contract| contract.set_minter(staking_contract.clone()));
+
+            client
+                .call(&ink_e2e::alice(), grant_minter_role, 0, None)
+                .await
+                .expect("grant_minter_role failed");
+
             // Transfer 70% of the staking tokens to the staking contract
             let transfer =
                 build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
@@ -537,6 +547,16 @@ pub mod staking {
                 .expect("instantiate failed")
                 .account_id;
 
+            // Grant Staking contract Minter role in the reputation token contract
+            let grant_minter_role =
+                build_message::<ReputationTokenContractRef>(reputation_token.clone())
+                    .call(|contract| contract.set_minter(staking_contract.clone()));
+
+            client
+                .call(&ink_e2e::alice(), grant_minter_role, 0, None)
+                .await
+                .expect("grant_minter_role failed");
+
             // Transfer 70% of the staking tokens to the staking contract
             let transfer =
                 build_message::<StakingTokenContractRef>(staking_token.clone()).call(|contract| {
@@ -681,6 +701,16 @@ pub mod staking {
                 .await
                 .expect("instantiate failed")
                 .account_id;
+
+            // Grant Staking contract Minter role in the reputation token contract
+            let grant_minter_role =
+                build_message::<ReputationTokenContractRef>(reputation_token.clone())
+                    .call(|contract| contract.set_minter(staking_contract.clone()));
+
+            client
+                .call(&ink_e2e::alice(), grant_minter_role, 0, None)
+                .await
+                .expect("grant_minter_role failed");
 
             // Transfer 70% of the staking tokens to the staking contract
             let transfer =
