@@ -9,10 +9,7 @@ pub mod staking {
         traits::{DefaultEnv, Storage},
     };
     use staking_dapp::traits::reputation::ReputationRef;
-    use staking_dapp::{
-        impls::staking::{data, staking::*},
-        traits::staking::*,
-    };
+    use staking_dapp::{impls::staking::data, traits::staking::*};
 
     const SECONDS_PER_YEAR: Timestamp = 60 * 60 * 24 * 365;
     const INITIAL_REWARD_RATE: u128 = 50;
@@ -154,8 +151,7 @@ pub mod staking {
 
             self.reputation_last_update.insert(&staker, &now);
 
-            let _ =
-                ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
+            ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation)?;
             Ok(())
         }
     }
