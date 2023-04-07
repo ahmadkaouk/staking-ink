@@ -38,9 +38,20 @@ where
         self.update_reward(staker);
         PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
 
-        let new_amount = self.data().balances.get(&staker).unwrap_or(0) + amount;
+        let new_amount = self
+            .data()
+            .balances
+            .get(&staker)
+            .unwrap_or(0)
+            .checked_add(amount)
+            .ok_or(StakingError::OverflowError)?;
+
         self.data().balances.insert(&staker, &new_amount);
-        self.data().total_supply += amount;
+        self.data().total_supply = self
+            .data()
+            .total_supply
+            .checked_add(amount)
+            .ok_or(StakingError::OverflowError)?;
 
         Ok(())
     }
@@ -57,10 +68,18 @@ where
         // self.update_reward(staker);
         PSP22Ref::transfer(&staking_token, staker, amount, Vec::<u8>::new())?;
 
-        self.data()
-            .balances
-            .insert(&staker, &(staked_amount - amount));
-        self.data().total_supply -= amount;
+        self.data().balances.insert(
+            &staker,
+            &(staked_amount
+                .checked_sub(amount)
+                .ok_or(StakingError::OverflowError)?),
+        );
+
+        self.data().total_supply = self
+            .data()
+            .total_supply
+            .checked_sub(amount)
+            .ok_or(StakingError::OverflowError)?;
 
         Ok(())
     }

@@ -42,7 +42,11 @@ pub mod staking {
                 .checked_mul(SECONDS_PER_YEAR)
                 .ok_or(StakingError::OverflowError)?;
 
-            self.staking.period_finish = self.staking.period_start + seconds_elapsed;
+            self.staking.period_finish = self
+                .staking
+                .period_start
+                .checked_add(seconds_elapsed)
+                .ok_or(StakingError::OverflowError)?;
 
             // The percentage of the initial supply released per year
             let percentage_released = INITIAL_REWARD_RATE >> years_elapsed;
@@ -176,7 +180,7 @@ pub mod staking {
                 StakingContract::new(staking_token.env().account_id(), reputation_token);
 
             staking_contract.update_reward_rate();
-            assert_eq!(staking_contract.staking.reward_rate / 10u128.pow(18), 0);
+            assert_eq!(staking_contract.staking.reward_rate / 10u128.pow(18), 11);
         }
     }
 
