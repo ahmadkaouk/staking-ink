@@ -50,7 +50,7 @@ pub trait Staking {
 }
 
 pub trait Internal {
-    fn update_reward_rate(&mut self);
+    fn update_reward_rate(&mut self) -> Result<(), StakingError>;
 
     /// Returns the staking reward per token.
     fn reward_per_token(&self) -> Balance;
@@ -81,6 +81,10 @@ pub enum StakingError {
     PSP22Error(PSP22Error),
     /// PSP37 error
     PSP37Error(PSP37Error),
+    /// Overflow error
+    OverflowError,
+    /// Division by zero error
+    DivideByZero,
 }
 
 impl From<PSP22Error> for StakingError {

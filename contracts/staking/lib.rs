@@ -14,7 +14,7 @@ pub mod staking {
         traits::staking::*,
     };
 
-    const SECONDS_PER_YEAR: Timestamp = 31_536_000;
+    const SECONDS_PER_YEAR: Timestamp = 60 * 60 * 24 * 365;
     const INITIAL_REWARD_RATE: u128 = 50;
     const STAKING_ALLOCATION: u128 = 70;
     const INITIAL_SUPPLY: Balance = 1_000_000_000 * 10u128.pow(18);
@@ -30,16 +30,26 @@ pub mod staking {
     }
 
     impl Internal for StakingContract {
-        fn update_reward_rate(&mut self) {
+        fn update_reward_rate(&mut self) -> Result<(), StakingError> {
             let now = Self::env().block_timestamp();
-            let years_elapsed = (now - self.staking.period_start) / SECONDS_PER_YEAR;
-            self.staking.period_finish =
-                self.staking.period_start + (years_elapsed + 1) * SECONDS_PER_YEAR;
-            self.staking.reward_rate = (INITIAL_REWARD_RATE >> years_elapsed)
-                * INITIAL_SUPPLY
-                * STAKING_ALLOCATION
-                / 100
-                / SECONDS_PER_YEAR as u128;
+
+            let years_elapsed = (now - self.staking.period_start)
+                .checked_div(SECONDS_PER_YEAR)
+                .ok_or(StakingError::DivideByZero)?
+                % SECONDS_PER_YEAR;
+
+            let seconds_elapsed = (years_elapsed + 1)
+                .checked_mul(SECONDS_PER_YEAR)
+                .ok_or(StakingError::OverflowError)?;
+
+            self.staking.period_finish = self.staking.period_start + seconds_elapsed;
+
+            // The percentage of the initial supply released per year
+            let percentage_released = INITIAL_REWARD_RATE >> years_elapsed;
+            self.staking.reward_rate = INITIAL_SUPPLY * STAKING_ALLOCATION * percentage_released
+                / (100 * 100 * SECONDS_PER_YEAR as u128);
+
+            Ok(())
         }
 
         fn reward_per_token(&self) -> u128 {
@@ -151,6 +161,22 @@ pub mod staking {
                 staking_contract.staking.staking_token,
                 staking_token.env().account_id()
             );
+        }
+
+        #[ink::test]
+        fn update_reward_rate_works() {
+            let name = Some(openbrush::traits::String::from("My Staking Token"));
+            let symbol = Some(openbrush::traits::String::from("MST"));
+            let staking_token =
+                StakingTokenContract::new(name.clone(), symbol.clone(), 18, INITIAL_SUPPLY);
+
+            let reputation_token = AccountId::from([0x1; 32]);
+
+            let mut staking_contract =
+                StakingContract::new(staking_token.env().account_id(), reputation_token);
+
+            staking_contract.update_reward_rate();
+            assert_eq!(staking_contract.staking.reward_rate / 10u128.pow(18), 0);
         }
     }
 
