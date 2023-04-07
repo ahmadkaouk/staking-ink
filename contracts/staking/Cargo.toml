@@ -36,5 +36,12 @@ std               = [
 ink-as-dependency = []
 e2e-tests = []
 
+[profile.release]
+panic = "abort"
+lto   = false
+
 [profile.dev]
-codegen-units = 16
+panic           = "abort"
+codegen-units   = 16
+lto             = false
+overflow-checks = false
