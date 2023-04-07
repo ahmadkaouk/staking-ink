@@ -14,11 +14,11 @@ pub mod staking {
         traits::staking::*,
     };
 
-    const SECONDS_PER_YEAR: u64 = 31_536_000;
+    const SECONDS_PER_YEAR: Timestamp = 31_536_000;
     const INITIAL_REWARD_RATE: u128 = 50;
     const STAKING_ALLOCATION: u128 = 70;
-    const INITIAL_SUPPLY: u128 = 1_000_000_000 * 10u128.pow(18);
-    const REPUTATION_DURATION: u128 = 60 * 60 * 24;
+    const INITIAL_SUPPLY: Balance = 1_000_000_000 * 10u128.pow(18);
+    const REPUTATION_DURATION: Timestamp = 60 * 60 * 24;
 
     #[ink(storage)]
     #[derive(Storage)]
@@ -35,7 +35,7 @@ pub mod staking {
             let years_elapsed = (now - self.staking.period_start) / SECONDS_PER_YEAR;
             self.staking.period_finish =
                 self.staking.period_start + (years_elapsed + 1) * SECONDS_PER_YEAR;
-            self.staking.reward_rate = (INITIAL_REWARD_RATE >> years_elapsed) as u128
+            self.staking.reward_rate = (INITIAL_REWARD_RATE >> years_elapsed)
                 * INITIAL_SUPPLY
                 * STAKING_ALLOCATION
                 / 100
@@ -47,13 +47,13 @@ pub mod staking {
                 self.staking.reward_per_token_stored
             } else {
                 let delta_time = self.last_time_reward_applicable() - self.staking.last_update_time;
-                let reward = delta_time as u128 * self.staking.reward_rate * 10u128.pow(18);
+                let reward = delta_time as u128 * self.staking.reward_rate;
                 self.staking.reward_per_token_stored + (reward / self.staking.total_supply)
             }
         }
 
         fn update_reward(&mut self, staker: AccountId) {
-            self.update_reputation(staker);
+            // self.update_reputation(staker);
             self.update_reward_rate();
             self.staking.reward_per_token_stored = self.reward_per_token();
             self.staking.last_update_time = self.last_time_reward_applicable();
@@ -86,13 +86,14 @@ pub mod staking {
 
         fn update_reputation(&mut self, staker: AccountId) {
             let now = Self::env().block_timestamp();
-            let time_elapsed = now - self.reputation_last_update.get(&staker).unwrap_or(0);
-            let new_reputation = self.staking.balances.get(&staker).unwrap_or(0)
-                * time_elapsed as u128
-                / REPUTATION_DURATION
-                / 10u128.pow(18);
+            let last_time_update = self.reputation_last_update.get(&staker).unwrap_or(0);
+            let time_elapsed = now - last_time_update;
+            let rate = (time_elapsed / REPUTATION_DURATION) as Balance;
+            let balance = self.staking.balances.get(&staker).unwrap_or(0);
+            let new_reputation = balance * rate / 10u128.pow(18);
 
             self.reputation_last_update.insert(&staker, &now);
+
             let _ =
                 ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation);
         }
