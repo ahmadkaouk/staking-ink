@@ -225,6 +225,12 @@ pub mod staking {
 
             staking_contract.update_reward_rate().unwrap();
             assert_eq!(staking_contract.staking.reward_rate, 11098427194317605276);
+
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(SECONDS_PER_YEAR);
+            ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
+
+            staking_contract.update_reward_rate().unwrap();
+            assert_eq!(staking_contract.staking.reward_rate, 5549213597158802638);
         }
     }
 
