@@ -131,14 +131,18 @@ pub mod staking {
 
         fn update_reputation(&mut self, staker: AccountId) -> Result<(), StakingError> {
             let now = Self::env().block_timestamp();
-            let last_time_update = self.reputation_last_update.get(&staker).unwrap_or(0);
+            let last_time_update = self
+                .reputation
+                .reputation_last_update
+                .get(&staker)
+                .unwrap_or(0);
 
             let time_elapsed = now
                 .checked_sub(last_time_update)
                 .ok_or(StakingError::OverflowError)?;
 
             let rate = time_elapsed
-                .checked_div(REPUTATION_DURATION)
+                .checked_div(REPUTATION_PERIOD)
                 .ok_or(StakingError::DivideByZero)?;
 
             let balance = self.staking.balances.get(&staker).unwrap_or(0);
@@ -149,9 +153,13 @@ pub mod staking {
                 .checked_div(10u128.pow(18))
                 .ok_or(StakingError::DivideByZero)?;
 
-            self.reputation_last_update.insert(&staker, &now);
+            self.reputation.reputation_last_update.insert(&staker, &now);
 
-            ReputationRef::update_reputation(&self.reputation_token, staker, new_reputation)?;
+            ReputationRef::update_reputation(
+                &self.reputation.reputation_token,
+                staker,
+                new_reputation,
+            )?;
             Ok(())
         }
     }
@@ -163,15 +171,14 @@ pub mod staking {
         pub fn new(staking_token: AccountId, reputation_token: AccountId) -> Self {
             let mut instance = StakingContract {
                 staking: Default::default(),
-                reputation_token,
-                reputation_last_update: Default::default(),
+                reputation: Default::default(),
             };
 
             let now = instance.env().block_timestamp();
             instance.staking.staking_token = staking_token;
             instance.staking.period_start = now;
             instance.staking.period_finish = now + SECONDS_PER_YEAR;
-            instance.reputation_token = reputation_token;
+            instance.reputation.reputation_token = reputation_token;
             instance
         }
 
