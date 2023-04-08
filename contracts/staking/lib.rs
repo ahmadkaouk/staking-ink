@@ -3,94 +3,73 @@
 
 #[openbrush::contract]
 pub mod staking {
-    use core::ops::Mul;
-    use openbrush::{
-        storage::Mapping,
-        traits::{DefaultEnv, Storage},
-    };
+    use openbrush::traits::{DefaultEnv, Storage};
     use staking_dapp::traits::reputation::ReputationRef;
-    use staking_dapp::{impls::staking::data, traits::staking::*};
+    use staking_dapp::{
+        impls::{reputation, staking},
+        traits::staking::*,
+    };
 
-    const SECONDS_PER_YEAR: Timestamp = 60 * 60 * 24 * 365;
+    const HALVING_PERIOD: Timestamp = 60 * 60 * 24 * 365;
     const INITIAL_REWARD_RATE: u128 = 50;
-    const STAKING_ALLOCATION: u128 = 70;
-    const INITIAL_SUPPLY: Balance = 1_000_000_000 * 10u128.pow(18);
-    const REPUTATION_DURATION: Timestamp = 60 * 60 * 24;
+    const REPUTATION_PERIOD: Timestamp = 60 * 60 * 24;
 
     #[ink(storage)]
     #[derive(Storage)]
     pub struct StakingContract {
         #[storage_field]
-        staking: data::Data,
-        reputation_token: AccountId,
-        reputation_last_update: Mapping<AccountId, Timestamp>,
+        staking: staking::data::Data,
+        #[storage_field]
+        reputation: reputation::data::Data,
     }
 
     impl Internal for StakingContract {
-        fn update_reward_rate(&mut self) -> Result<(), StakingError> {
-            let now = Self::env().block_timestamp();
-
-            let years_elapsed = (now - self.staking.period_start)
-                .checked_div(SECONDS_PER_YEAR)
-                .ok_or(StakingError::DivideByZero)?
-                % SECONDS_PER_YEAR;
-
-            let seconds_elapsed = (years_elapsed + 1)
-                .checked_mul(SECONDS_PER_YEAR)
-                .ok_or(StakingError::OverflowError)?;
-
-            self.staking.period_finish = self
-                .staking
-                .period_start
-                .checked_add(seconds_elapsed)
-                .ok_or(StakingError::OverflowError)?;
-
-            self.staking.reward_rate = INITIAL_SUPPLY
-                .checked_mul(STAKING_ALLOCATION)
-                .ok_or(StakingError::OverflowError)?
-                .checked_mul(INITIAL_REWARD_RATE >> years_elapsed)
-                .ok_or(StakingError::OverflowError)?
-                .checked_div(100)
-                .ok_or(StakingError::OverflowError)?
-                .checked_div(100)
-                .ok_or(StakingError::OverflowError)?
-                .checked_div(SECONDS_PER_YEAR.into())
-                .ok_or(StakingError::OverflowError)?;
-
-            Ok(())
-        }
-
         fn reward_per_token(&self) -> Result<Balance, StakingError> {
-            if self.staking.total_supply == 0 {
-                Ok(self.staking.reward_per_token_stored)
-            } else {
-                let delta_time = self
-                    .last_time_reward_applicable()
-                    .checked_sub(self.staking.last_update_time)
-                    .ok_or(StakingError::OverflowError)?;
-
-                let reward = self
-                    .staking
-                    .reward_rate
-                    .checked_mul(delta_time as u128)
-                    .ok_or(StakingError::OverflowError)?;
-
-                self.staking
-                    .reward_per_token_stored
-                    .checked_add(
-                        reward
-                            .checked_mul(self.staking.total_supply)
-                            .ok_or(StakingError::OverflowError)?,
-                    )
-                    .ok_or(StakingError::OverflowError)
+            if self.staking.total_staked == 0 {
+                return Ok(self.staking.reward_per_token_stored);
             }
+
+            let time_since_last_update = self
+                .last_time_reward_applicable()?
+                .checked_sub(self.staking.last_update_time)
+                .ok_or(StakingError::OverflowError)?;
+
+            let halving_duration = time_since_last_update
+                .checked_div(HALVING_PERIOD)
+                .ok_or(StakingError::OverflowError)?;
+
+            let current_reward_rate = self
+                .staking
+                .reward_rate
+                .checked_div(
+                    2u128
+                        .checked_pow(
+                            halving_duration
+                                .try_into()
+                                .map_err(|_| StakingError::OverflowError)?,
+                        )
+                        .ok_or(StakingError::OverflowError)?,
+                )
+                .ok_or(StakingError::DivideByZero)?;
+
+            self.staking
+                .reward_per_token_stored
+                .checked_add(
+                    (time_since_last_update as u128)
+                        .checked_mul(current_reward_rate)
+                        .ok_or(StakingError::OverflowError)?
+                        .checked_mul(10u128.pow(18))
+                        .ok_or(StakingError::OverflowError)?
+                        .checked_div(self.staking.total_staked)
+                        .ok_or(StakingError::DivideByZero)?,
+                )
+                .ok_or(StakingError::OverflowError)
         }
 
         fn update_reward(&mut self, staker: AccountId) -> Result<(), StakingError> {
-            // self.update_reputation(staker);
-            self.update_reward_rate()?;
+            self.update_reputation(staker)?;
             self.staking.reward_per_token_stored = self.reward_per_token()?;
-            self.staking.last_update_time = self.last_time_reward_applicable();
+            self.staking.last_update_time = self.last_time_reward_applicable()?;
             self.staking.rewards.insert(&staker, &self.earned(staker)?);
             self.staking
                 .user_reward_per_token_paid
@@ -99,10 +78,10 @@ pub mod staking {
         }
 
         fn earned(&self, staker: AccountId) -> Result<Balance, StakingError> {
-            let balance = self.staking.balances.get(&staker).unwrap_or(0);
+            let staked_amount = self.staking.balances.get(&staker).unwrap_or(0);
 
-            let new_rewards = balance
-                .mul(
+            staked_amount
+                .checked_mul(
                     self.reward_per_token()?
                         .checked_sub(
                             self.staking
@@ -112,20 +91,27 @@ pub mod staking {
                         )
                         .ok_or(StakingError::OverflowError)?,
                 )
-                .checked_div(10u128.pow(18))
-                .ok_or(StakingError::DivideByZero)?;
-
-            new_rewards
+                .ok_or(StakingError::OverflowError)?
                 .checked_add(self.staking.rewards.get(&staker).unwrap_or(0))
                 .ok_or(StakingError::OverflowError)
         }
 
-        fn last_time_reward_applicable(&self) -> Timestamp {
+        fn last_time_reward_applicable(&self) -> Result<Timestamp, StakingError> {
             let now = Self::env().block_timestamp();
-            if now < self.staking.period_finish {
-                now
+
+            if now
+                < self
+                    .staking
+                    .last_update_time
+                    .checked_add(HALVING_PERIOD)
+                    .ok_or(StakingError::OverflowError)?
+            {
+                Ok(now)
             } else {
-                self.staking.period_finish
+                self.staking
+                    .last_update_time
+                    .checked_add(HALVING_PERIOD)
+                    .ok_or(StakingError::OverflowError)
             }
         }
 
@@ -174,10 +160,9 @@ pub mod staking {
                 reputation: Default::default(),
             };
 
-            let now = instance.env().block_timestamp();
             instance.staking.staking_token = staking_token;
-            instance.staking.period_start = now;
-            instance.staking.period_finish = now + SECONDS_PER_YEAR;
+            instance.staking.reward_rate = INITIAL_REWARD_RATE;
+            instance.staking.last_update_time = instance.env().block_timestamp();
             instance.reputation.reputation_token = reputation_token;
             instance
         }
@@ -195,8 +180,10 @@ pub mod staking {
         use ink::codegen::Env;
         use staking_token::token::StakingTokenContract;
 
+        const INITIAL_SUPPLY: Balance = 1_000_000_000 * 10u128.pow(18);
+
         #[ink::test]
-        fn instantiation_works() {
+        fn instantiation() {
             let name = Some(openbrush::traits::String::from("My Staking Token"));
             let symbol = Some(openbrush::traits::String::from("MST"));
             let staking_token =
@@ -206,10 +193,8 @@ pub mod staking {
 
             let staking_contract =
                 StakingContract::new(staking_token.env().account_id(), reputation_token);
-            assert_eq!(staking_contract.staking.total_supply, 0);
-            assert_eq!(staking_contract.staking.period_start, 0);
-            assert_eq!(staking_contract.staking.period_finish, SECONDS_PER_YEAR);
-            assert_eq!(staking_contract.staking.reward_rate, 0);
+            assert_eq!(staking_contract.staking.total_staked, 0);
+            assert_eq!(staking_contract.staking.reward_rate, 50);
             assert_eq!(staking_contract.staking.reward_per_token_stored, 0);
             assert_eq!(staking_contract.staking.last_update_time, 0);
             assert_eq!(
@@ -219,7 +204,7 @@ pub mod staking {
         }
 
         #[ink::test]
-        fn update_reward_rate_works() {
+        fn reward_per_token() {
             let name = Some(openbrush::traits::String::from("My Staking Token"));
             let symbol = Some(openbrush::traits::String::from("MST"));
             let staking_token =
@@ -230,14 +215,13 @@ pub mod staking {
             let mut staking_contract =
                 StakingContract::new(staking_token.env().account_id(), reputation_token);
 
-            staking_contract.update_reward_rate().unwrap();
-            assert_eq!(staking_contract.staking.reward_rate, 11098427194317605276);
+            assert_eq!(staking_contract.reward_per_token().unwrap(), 0);
 
-            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(SECONDS_PER_YEAR);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(HALVING_PERIOD);
             ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
 
-            staking_contract.update_reward_rate().unwrap();
-            assert_eq!(staking_contract.staking.reward_rate, 5549213597158802638);
+            staking_contract.staking.total_staked = 1_000_000 * 10u128.pow(18);
+            assert_eq!(staking_contract.reward_per_token().unwrap(), 788);
         }
     }
 
@@ -251,6 +235,9 @@ pub mod staking {
         use reputation_token::token::ReputationTokenContractRef;
         use staking_dapp::traits::staking::staking_external::Staking;
         use staking_token::token::StakingTokenContractRef;
+
+        const INITIAL_SUPPLY: Balance = 1_000_000_000 * 10u128.pow(18);
+        const STAKING_ALLOCATION: u128 = 70;
 
         /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -304,7 +291,7 @@ pub mod staking {
 
             // Check total staked amount at the beginning is 0
             let token_name = build_message::<StakingContractRef>(staking_contract.clone())
-                .call(|contract| contract.total_supply());
+                .call(|contract| contract.total_staked());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &token_name, 0, None)
@@ -429,7 +416,7 @@ pub mod staking {
 
             // Check total staked amount
             let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
-                .call(|contract| contract.total_supply());
+                .call(|contract| contract.total_staked());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
@@ -483,7 +470,7 @@ pub mod staking {
 
             // Check total staked amount
             let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
-                .call(|contract| contract.total_supply());
+                .call(|contract| contract.total_staked());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
@@ -608,7 +595,7 @@ pub mod staking {
 
             // Check total staked amount
             let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
-                .call(|contract| contract.total_supply());
+                .call(|contract| contract.total_staked());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
@@ -639,7 +626,7 @@ pub mod staking {
 
             // Check total staked amount
             let total_staked_amount = build_message::<StakingContractRef>(staking_contract.clone())
-                .call(|contract| contract.total_supply());
+                .call(|contract| contract.total_staked());
             assert_eq!(
                 client
                     .call_dry_run(&ink_e2e::alice(), &total_staked_amount, 0, None)
@@ -753,8 +740,8 @@ pub mod staking {
                 .expect("stake failed");
 
             // TODO How to simulate elapsed time here ? Does this work ?
-            // ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(SECONDS_PER_YEAR);
-            // ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(HALVING_PERIOD);
+            ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
 
             // Get Reward for Alice
             let alice_reward = build_message::<StakingContractRef>(staking_contract.clone())

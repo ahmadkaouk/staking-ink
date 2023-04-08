@@ -46,12 +46,10 @@ pub trait Staking {
 
     /// Returns the total amount of tokens staked.
     #[ink(message)]
-    fn total_supply(&self) -> Balance;
+    fn total_staked(&self) -> Balance;
 }
 
 pub trait Internal {
-    fn update_reward_rate(&mut self) -> Result<(), StakingError>;
-
     /// Returns the staking reward per token.
     fn reward_per_token(&self) -> Result<Balance, StakingError>;
 
@@ -60,7 +58,7 @@ pub trait Internal {
 
     fn earned(&self, account: AccountId) -> Result<Balance, StakingError>;
 
-    fn last_time_reward_applicable(&self) -> Timestamp;
+    fn last_time_reward_applicable(&self) -> Result<Timestamp, StakingError>;
 
     fn update_reputation(&mut self, staker: AccountId) -> Result<(), StakingError>;
 }

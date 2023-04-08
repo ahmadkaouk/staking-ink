@@ -35,7 +35,7 @@ where
             StakingError::InsufficientBalance
         );
 
-        self.update_reward(staker)?;
+        // self.update_reward(staker)?;
         PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
 
         let new_amount = self
@@ -47,9 +47,9 @@ where
             .ok_or(StakingError::OverflowError)?;
 
         self.data().balances.insert(&staker, &new_amount);
-        self.data().total_supply = self
+        self.data().total_staked = self
             .data()
-            .total_supply
+            .total_staked
             .checked_add(amount)
             .ok_or(StakingError::OverflowError)?;
 
@@ -75,9 +75,9 @@ where
                 .ok_or(StakingError::OverflowError)?),
         );
 
-        self.data().total_supply = self
+        self.data().total_staked = self
             .data()
-            .total_supply
+            .total_staked
             .checked_sub(amount)
             .ok_or(StakingError::OverflowError)?;
 
@@ -106,7 +106,7 @@ where
         self.data().balances.get(&account).unwrap_or(0)
     }
 
-    default fn total_supply(&self) -> Balance {
-        self.data().total_supply
+    default fn total_staked(&self) -> Balance {
+        self.data().total_staked
     }
 }
