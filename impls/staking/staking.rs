@@ -35,9 +35,6 @@ where
             StakingError::InsufficientBalance
         );
 
-        // self.update_reward(staker)?;
-        PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
-
         let new_amount = self
             .data()
             .balances
@@ -53,6 +50,10 @@ where
             .checked_add(amount)
             .ok_or(StakingError::OverflowError)?;
 
+        // self.update_reward(staker)?;
+        // self.update_reputation(staker)?;
+        PSP22Ref::transfer_from(&staking_token, staker, contract, amount, Vec::<u8>::new())?;
+
         Ok(())
     }
 
@@ -65,8 +66,6 @@ where
 
         ensure!(staked_amount >= amount, StakingError::InsufficientBalance);
 
-        // self.update_reward(staker)?;
-        PSP22Ref::transfer(&staking_token, staker, amount, Vec::<u8>::new())?;
 
         self.data().balances.insert(
             &staker,
@@ -81,6 +80,10 @@ where
             .checked_sub(amount)
             .ok_or(StakingError::OverflowError)?;
 
+        // self.update_reward(staker)?;
+        // self.update_reputation(staker)?;
+        PSP22Ref::transfer(&staking_token, staker, amount, Vec::<u8>::new())?;
+
         Ok(())
     }
 
@@ -91,14 +94,17 @@ where
 
         let rewards = self.data().rewards.get(&staker).unwrap_or(0);
         if rewards > 0 {
+            self.data().rewards.insert(&staker, &0);
+
             PSP22Ref::transfer(
                 &self.data().staking_token,
                 staker,
                 rewards,
                 Vec::<u8>::new(),
             )?;
-            self.data().rewards.insert(&staker, &0);
         }
+        self.update_reputation(staker)?;
+
         Ok(())
     }
 

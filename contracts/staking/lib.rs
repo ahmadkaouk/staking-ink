@@ -67,7 +67,6 @@ pub mod staking {
         }
 
         fn update_reward(&mut self, staker: AccountId) -> Result<(), StakingError> {
-            self.update_reputation(staker)?;
             self.staking.reward_per_token_stored = self.reward_per_token()?;
             self.staking.last_update_time = self.last_time_reward_applicable()?;
             self.staking.rewards.insert(&staker, &self.earned(staker)?);
